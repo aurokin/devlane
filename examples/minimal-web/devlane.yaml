@@ -23,6 +23,10 @@ runtime:
   env:
     APP_MODE: development
 
+ports:
+  - name: web
+    default: 3000
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"

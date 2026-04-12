@@ -2,14 +2,24 @@
 
 The shared tool should own **lifecycle**, not product-specific business logic.
 
-## Current commands in this scaffold
+## Lifecycle commands
 
 - `inspect` — derive and print the manifest
-- `prepare` — write the manifest, compose env file, and generated files
+- `prepare` — write the manifest, compose env file, and generated files (allocates ports via the host catalog)
 - `up` — run lane-aware `docker compose up`
-- `down` — run lane-aware `docker compose down`
+- `down` — run lane-aware `docker compose down` (does **not** release catalog ports)
 - `status` — run lane-aware `docker compose ps`
 - `doctor` — validate obvious prerequisites
+
+## Host catalog commands
+
+- `port <service>` — print the currently assigned port for a service (plain number by default, `--verbose` for metadata, `--probe` to verify bindability via exit code)
+- `reassign <service>` — idempotent repair; probes the current port and only moves it if actually blocked, otherwise no-op
+- `host status` — list all allocations across the host
+- `host doctor` — probe every allocation and report live conflicts, missing repos, or other drift
+- `host gc` — remove catalog entries whose repos or lanes no longer exist (supports `--older-than`, `--app`, `--yes`)
+
+See `65-host-catalog.md` for the catalog contract and allocation model.
 
 ## Ownership boundaries
 
@@ -22,6 +32,8 @@ The shared tool owns:
 - compose env generation
 - template rendering
 - common health and diagnostic output
+- the host catalog and port allocation
+- `~/.config/devlane/catalog.json` (state, tool-written)
 
 The repo adapter owns:
 
@@ -39,12 +51,11 @@ The repo itself owns:
 
 ## Future commands that belong here
 
-Once phase 1 is stable, these commands likely belong in the shared tool:
+Once the current phases are stable, these commands likely belong in the shared tool:
 
 - `worktree create`
 - `worktree list`
 - `worktree remove`
-- `gc`
 - `stable deploy`
 - `stable rollback`
 - `proxy register`

@@ -92,12 +92,6 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "compose_files",
-        "default_profiles",
-        "optional_profiles",
-        "env"
-      ],
       "properties": {
         "compose_files": {
           "type": "array",
@@ -126,6 +120,29 @@
               "boolean",
               "null"
             ]
+          }
+        }
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "default"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+          },
+          "default": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
           }
         }
       }

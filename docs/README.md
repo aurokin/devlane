@@ -13,7 +13,9 @@ Then choose a branch:
 - Need the shared tool contract? Read `40-cli-contract.md`.
 - Need to adapt a repo? Read `50-adapter-schema.md` and `90-example-integrations.md`.
 - Need to wire agents to the tool? Read `60-manifest-contract.md` and `80-agent-playbook.md`.
+- Need the host-wide port and lane model? Read `65-host-catalog.md`.
 - Need the container pattern? Read `70-container-workflow.md`.
+- Need the bare-metal pattern? Read `75-baremetal-workflow.md`.
 - Need the roadmap? Read `100-implementation-plan.md`.
 - Need done criteria? Read `110-acceptance-checklist.md`.
 

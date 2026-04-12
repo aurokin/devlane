@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "devlane user config",
+  "description": "User-editable configuration at ~/.config/devlane/config.yaml. Controls the port allocation pool and reserved ports. The whole file is optional; sensible defaults apply when it is missing.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "port_range": {
+      "type": "object",
+      "description": "Bounds the pool devlane allocates from when an adapter's declared default is unavailable. Note: start must be <= end; not enforced at the schema level.",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "reserved": {
+      "type": "array",
+      "description": "Ports that devlane must never allocate, even when an adapter's declared default matches.",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "uniqueItems": true
+    }
+  }
+}

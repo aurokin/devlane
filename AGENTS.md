@@ -1,7 +1,5 @@
 # AGENTS.md
 
-Read this file first. It is the entrypoint for coding agents working on this kit.
-
 ## Mission
 
 Build **devlane**, a shared local-development control plane that lets humans and agents work on many repos with the same mental model:
@@ -24,7 +22,8 @@ Read in this order unless you already know the area you are touching:
 Then branch by task:
 
 - **Core CLI or manifest work:** `docs/40-cli-contract.md`, `docs/50-adapter-schema.md`, `docs/60-manifest-contract.md`, then `src/devlane/`
-- **Container or reverse-proxy work:** `docs/70-container-workflow.md`, then `examples/minimal-web/` and `examples/agentchat/`
+- **Port or host catalog work:** `docs/65-host-catalog.md`, then `docs/80-agent-playbook.md` for the conflict-handling protocol
+- **Runtime patterns (containerized or bare-metal):** `docs/70-container-workflow.md` and `docs/75-baremetal-workflow.md`, then the matching examples under `examples/`
 - **Repo adoption work:** `docs/90-example-integrations.md`, then `examples/agentchat/` or `examples/wowhead_cli/`
 - **Planning / acceptance work:** `docs/100-implementation-plan.md` and `docs/110-acceptance-checklist.md`
 - **Prompt handoff work:** `prompts/README.md`
@@ -37,10 +36,12 @@ These rules are the design center. Do not casually violate them.
 2. **Stable owns global names.** Stable may own friendly hostnames, global wrappers, or global service names. Dev lanes do not silently take them.
 3. **`inspect --json` is the source of truth for agents.** Agents should not scrape ad hoc env files when a manifest exists.
 4. **Generated files are tool-owned.** Repos may read generated files, but humans and agents should avoid manual edits except for explicit adoption flows.
-5. **Only ingress binds host ports for HTTP apps.** Internal services should communicate by Compose service name on the lane network.
+5. **Bare-metal is the default runtime pattern.** Most apps bind host ports directly and use the host catalog for coordinated allocation. Containerized HTTP apps are an opt-in alternative: declare `compose_files` and route through an ingress proxy for hostname-based discovery. A repo can mix both. The pattern is signaled by the adapter (presence of `ports`, `compose_files`) rather than a dedicated runtime field.
 6. **Compose project names include the lane slug.** That is the baseline container namespace.
 7. **Keep core repo-agnostic.** App-specific env var names, wrapper names, and product rules live in adapters and examples, not in the core library.
 8. **Prefer additive, machine-readable contracts.** If the behavior changes, update docs, schemas, examples, and tests together.
+9. **The host catalog is tool-owned.** `~/.config/devlane/catalog.json` is written by the tool and read by everyone else. Humans and agents should not hand-edit it. User configuration lives in `~/.config/devlane/config.yaml`, which the tool only reads.
+10. **Port allocations are sticky.** Once a `(app, lane, service)` tuple has a port, it does not move except via explicit `reassign` or `gc`. Do not introduce code paths that re-probe existing allocations silently.
 
 ## Working style
 
@@ -55,6 +56,14 @@ These rules are the design center. Do not casually violate them.
 - If you add a new manifest field, update:
   - `docs/60-manifest-contract.md`
   - `schemas/manifest.schema.json`
+  - tests
+- If you change the host catalog shape, update:
+  - `docs/65-host-catalog.md`
+  - `schemas/catalog.schema.json`
+  - tests
+- If you change the user config shape, update:
+  - `docs/65-host-catalog.md`
+  - `schemas/config.schema.json`
   - tests
 
 ## Definition of done
@@ -73,8 +82,9 @@ A feature is done when:
 1. Keep `inspect` and `prepare` rock-solid.
 2. Keep template rendering deterministic and easy to reason about.
 3. Improve Compose lifecycle support.
-4. Add worktree lifecycle support only after the manifest contract is stable.
-5. Add proxy integration after lane naming and compose env generation are stable.
+4. Land the host catalog and port allocation before anything that depends on cross-project coordination.
+5. Add worktree lifecycle support only after the manifest contract and host catalog are stable.
+6. Add proxy integration after lane naming, compose env generation, and the catalog are stable.
 
 ## Commands
 

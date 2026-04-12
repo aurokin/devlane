@@ -47,6 +47,8 @@ This writes:
 - `.devlane/compose.env`
 - any template-driven files declared in the adapter
 
+If the adapter declares `ports`, `prepare` also allocates real host ports via the catalog at `~/.config/devlane/catalog.json`. Allocations are sticky — they persist across `up`/`down` cycles and machine reboots. See `65-host-catalog.md` for the model.
+
 ## 5. Bring the lane up
 
 ```bash

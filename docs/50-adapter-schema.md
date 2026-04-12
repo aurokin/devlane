@@ -32,6 +32,12 @@ runtime:
   env:
     APP_MODE: development
 
+ports:
+  - name: web
+    default: 3000
+  - name: api
+    default: 4000
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"
@@ -65,6 +71,19 @@ health:
 - `default_profiles` — profiles enabled by default
 - `optional_profiles` — known optional profiles
 - `env` — extra env values that should be available to templates and Compose
+
+All four fields are optional. Pure bare-metal repos that do not use Docker Compose can omit `compose_files` and the profile fields; the default runtime pattern is bare-metal (see `75-baremetal-workflow.md`). Declaring `compose_files` is what opts an adapter into the containerized pattern (see `70-container-workflow.md`).
+
+### `ports`
+
+Optional. A list of named port needs, each with a preferred `default`.
+
+- `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`)
+- `default` — preferred port, tried first during allocation
+
+The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move unless `devlane reassign` or `devlane host gc` is run. See `65-host-catalog.md` for the allocation model.
+
+If `ports` is omitted, no ports are allocated. This is appropriate for pure-CLI repos that do not bind host ports.
 
 ### `outputs`
 

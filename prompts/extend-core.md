@@ -10,8 +10,9 @@ You are working on the shared `devlane` tool.
 4. `docs/40-cli-contract.md`
 5. `docs/50-adapter-schema.md`
 6. `docs/60-manifest-contract.md`
-7. `docs/100-implementation-plan.md`
-8. `docs/110-acceptance-checklist.md`
+7. `docs/65-host-catalog.md`
+8. `docs/100-implementation-plan.md`
+9. `docs/110-acceptance-checklist.md`
 
 ## Goal
 

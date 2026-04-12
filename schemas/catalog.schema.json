@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "devlane host catalog",
+  "description": "Tool-owned host-wide state at ~/.config/devlane/catalog.json. Tracks port allocations across all devlane-managed apps on this host.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "allocations"
+  ],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "const": 1
+    },
+    "allocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "app",
+          "lane",
+          "service",
+          "port",
+          "repoPath",
+          "lastPrepared"
+        ],
+        "properties": {
+          "app": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lane": {
+            "type": "string",
+            "minLength": 1
+          },
+          "service": {
+            "type": "string",
+            "minLength": 1
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "repoPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastPrepared": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

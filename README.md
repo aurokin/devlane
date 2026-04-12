@@ -38,7 +38,19 @@ The scaffold is intentionally small but useful:
 - builds lane-aware `docker compose` commands
 - exposes `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
 
-The scaffold does **not** yet fully own worktree creation, reverse-proxy registration, or stable deployment. Those are intentionally documented as next phases.
+## What Phase 2 adds
+
+Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devlane/catalog.json` that coordinates host-port allocations across every `devlane`-managed repo on the machine. It adds:
+
+- `ports` declarations in the adapter
+- `ports` and `DEVLANE_PORT_*` in the manifest
+- `devlane port <service>` and `devlane port <service> --probe`
+- `devlane reassign <service>` (idempotent, scoped)
+- `devlane host status`, `host doctor`, `host gc`
+
+The docs and schemas describe the Phase 2 target state. See `docs/65-host-catalog.md` and `docs/100-implementation-plan.md`.
+
+Later phases cover worktree lifecycle, proxy integration, and stable deployment.
 
 ## Start here
 
@@ -59,12 +71,14 @@ python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examp
 ## Progressive disclosure map
 
 - `docs/README.md` — the reading map
-- `docs/20-concepts.md` — stable, dev, adapter, manifest, generated outputs
+- `docs/20-concepts.md` — lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, generated outputs
 - `docs/30-quickstart.md` — fastest path to a first success
 - `docs/40-cli-contract.md` — what the shared tool owns
 - `docs/50-adapter-schema.md` — what each repo declares
 - `docs/60-manifest-contract.md` — what agents consume
-- `docs/70-container-workflow.md` — recommended containerized pattern
+- `docs/65-host-catalog.md` — host-wide port and lane coordination
+- `docs/70-container-workflow.md` — containerized pattern
+- `docs/75-baremetal-workflow.md` — bare-metal pattern
 - `docs/90-example-integrations.md` — how this maps onto real repos
 - `docs/100-implementation-plan.md` — phased roadmap
 - `docs/110-acceptance-checklist.md` — done criteria

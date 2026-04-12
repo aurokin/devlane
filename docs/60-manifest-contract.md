@@ -32,6 +32,10 @@ The manifest is the shared language between humans, agents, wrappers, and automa
     "publicHost": "feature-x.demoapp.localhost",
     "publicUrl": "http://feature-x.demoapp.localhost"
   },
+  "ports": {
+    "web": 3100,
+    "api": 4000
+  },
   "compose": {
     "files": ["/repo/path/compose.yaml"],
     "profiles": ["web"]
@@ -46,10 +50,29 @@ The manifest is the shared language between humans, agents, wrappers, and automa
   },
   "env": {
     "DEVLANE_APP": "demoapp",
-    "DEVLANE_LANE": "feature-x"
+    "DEVLANE_LANE": "feature-x",
+    "DEVLANE_PORT_WEB": "3100",
+    "DEVLANE_PORT_API": "4000"
   }
 }
 ```
+
+## Ports
+
+Ports are resolved from the host catalog at `prepare` time. Once allocated they are sticky — see `65-host-catalog.md`.
+
+- `manifest.ports.<name>` — integer, the assigned port for the service
+- `env.DEVLANE_PORT_<NAME>` — the same value as a string, available to compose and templates
+
+Templates can reference ports via the existing dot-path mechanism:
+
+```
+PORT={{ports.web}}
+```
+
+When the adapter declares no `ports`, the manifest still includes an empty `ports: {}` object and no `DEVLANE_PORT_*` env vars are emitted. This keeps the manifest shape stable for consumers.
+
+Agents should read `manifest.ports.<name>` rather than querying the catalog directly. The catalog is an implementation detail; the manifest is the contract.
 
 ## Required qualities
 

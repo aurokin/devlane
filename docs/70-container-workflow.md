@@ -1,13 +1,17 @@
 # Container workflow
 
-This is the recommended default for HTTP-heavy repos.
+This is the **opt-in containerized pattern** in `devlane`. It is the recommended shape for repos whose services all run in containers and speak HTTP — declare `compose_files` in the adapter to use it.
+
+The default pattern is bare-metal: see `75-baremetal-workflow.md`. The two patterns can coexist on the same machine — the host catalog keeps their ports from colliding.
 
 ## Baseline pattern
 
 1. each lane gets its own Compose project name
-2. services talk to each other by Compose service name
+2. services talk to each other by Compose service name on the lane network
 3. only the ingress proxy binds host ports
 4. humans and agents use hostnames, not random host ports
+
+When this pattern is in use, the adapter typically does not declare `ports`. Host-port allocation is unnecessary because nothing other than the shared proxy listens on the host. If a containerized service *does* need to bind a host port (a database for external tools, for example), declare it in the adapter like any other port and the catalog will allocate it.
 
 ## Why this is simpler
 
@@ -58,8 +62,10 @@ In that case, the lane contract is still useful for:
 
 ## Rule of thumb
 
-For web apps, prefer **hostname discovery**.
+For containerized web apps, prefer **hostname discovery** via this pattern.
+
+For bare-metal apps, prefer **catalog-allocated ports** via `75-baremetal-workflow.md`.
 
 For CLI repos, prefer **wrapper or activation discovery**.
 
-For both, prefer one manifest over many hand-maintained conventions.
+For all of the above, prefer one manifest over many hand-maintained conventions.
