@@ -4,8 +4,9 @@ The shared tool should own **lifecycle**, not product-specific business logic.
 
 ## Lifecycle commands
 
+- `init` — scaffold a starter `devlane.yaml`. Detects runtime pattern from repo signals (compose files → containerized; framework manifest without compose → bare-metal; neither → CLI). Flags: `--template <name>` uses a named starter template, `--from <path>` copies from any existing adapter, `--force` overwrites an existing file.
 - `inspect` — derive and print the manifest
-- `prepare` — write the manifest, compose env file, and generated files (allocates ports via the host catalog)
+- `prepare` — write the manifest, compose env file, and generated files (allocates ports via the host catalog). If no `devlane.yaml` is found, points the user at `devlane init`.
 - `up` — run lane-aware `docker compose up`
 - `down` — run lane-aware `docker compose down` (does **not** release catalog ports)
 - `status` — run lane-aware `docker compose ps`

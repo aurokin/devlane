@@ -4,6 +4,10 @@ Each repo contributes a `devlane.yaml`.
 
 The adapter should stay small and declarative.
 
+## Scaffolding a new adapter
+
+`devlane init` writes a starter `devlane.yaml` based on what it finds in the repo — compose files present (containerized), framework manifest without compose (bare-metal), or neither (CLI). Use `--template <name>` to force a shape, or `--from <path>` to copy an existing example. Most adoptions start here and then customize the result.
+
 ## Example
 
 ```yaml

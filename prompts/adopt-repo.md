@@ -39,13 +39,14 @@ Add a small declarative `devlane.yaml` to the target repo and make the shared to
 
 ## Workflow
 
-1. inspect the current repo for generated env/config files and local wrapper scripts
-2. map those files into `outputs.generated`
-3. define lane naming, hostname, and Compose project patterns
-4. make `python -m devlane inspect --json` meaningful in the repo
-5. make `python -m devlane prepare` recreate the current generated local files
-6. if the repo uses Compose, make `up` and `down` lane-aware
-7. update docs and examples
+1. run `devlane init` to scaffold a starter `devlane.yaml` (use `--from examples/<example>/devlane.yaml` if one is a closer fit than auto-detection)
+2. inspect the current repo for generated env/config files and local wrapper scripts
+3. map those files into `outputs.generated`
+4. define lane naming, hostname, and Compose project patterns
+5. make `python -m devlane inspect --json` meaningful in the repo
+6. make `python -m devlane prepare` recreate the current generated local files
+7. if the repo uses Compose, make `up` and `down` lane-aware
+8. update docs and examples
 
 ## Definition of done
 

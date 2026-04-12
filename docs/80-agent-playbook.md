@@ -25,11 +25,10 @@ Avoid leading with:
 
 Agents should:
 
-1. read `docs/50-adapter-schema.md`
-2. start from `examples/minimal-web/` or the closest example repo
-3. write a small `devlane.yaml`
-4. wire the repo's current generated files into `outputs.generated`
-5. make `inspect --json` and `prepare` produce the current local state deterministically
+1. run `devlane init` to scaffold a starter `devlane.yaml`. Use `--from examples/<example>/devlane.yaml` if a specific example is a closer fit than auto-detection.
+2. read `docs/50-adapter-schema.md` and the relevant workflow doc (`70-container-workflow.md` for containerized, `75-baremetal-workflow.md` for bare-metal)
+3. wire the repo's current generated files into `outputs.generated`
+4. make `inspect --json` and `prepare` produce the current local state deterministically
 
 ## What to ask from a repo
 

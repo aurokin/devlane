@@ -62,7 +62,14 @@ Start with `--dry-run` so the exact Compose command is visible.
 
 ## 6. Adopt a real repo
 
-For a real repo, add `devlane.yaml` and point its generated outputs at the files that are currently created by wrappers, shell scripts, or hand-edited `.env.local` flows.
+For a real repo, scaffold an adapter from the repo's current shape:
+
+```bash
+cd /path/to/your-repo
+python -m devlane init
+```
+
+`init` detects whether the repo is containerized (compose file present), bare-metal (framework manifest, no compose), or CLI (neither), and writes a starter `devlane.yaml`. Edit the file to point generated outputs at whatever your repo currently creates by wrappers, shell scripts, or hand-edited `.env.local` flows.
 
 Then make the agent workflow:
 

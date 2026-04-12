@@ -12,6 +12,7 @@ Deliverables:
 - stable manifest schema
 - working `inspect`
 - working `prepare`
+- `devlane init` for zero-friction adoption (auto-detects runtime pattern; supports `--template` and `--from`)
 - lane-aware `up`, `down`, and `status`
 - example adapters
 - acceptance tests

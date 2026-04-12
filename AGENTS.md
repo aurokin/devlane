@@ -81,10 +81,11 @@ A feature is done when:
 
 1. Keep `inspect` and `prepare` rock-solid.
 2. Keep template rendering deterministic and easy to reason about.
-3. Improve Compose lifecycle support.
-4. Land the host catalog and port allocation before anything that depends on cross-project coordination.
-5. Add worktree lifecycle support only after the manifest contract and host catalog are stable.
-6. Add proxy integration after lane naming, compose env generation, and the catalog are stable.
+3. Add `devlane init` as a zero-friction entry point for new adopters.
+4. Improve Compose lifecycle support.
+5. Land the host catalog and port allocation before anything that depends on cross-project coordination.
+6. Add worktree lifecycle support only after the manifest contract and host catalog are stable.
+7. Add proxy integration after lane naming, compose env generation, and the catalog are stable.
 
 ## Commands
 

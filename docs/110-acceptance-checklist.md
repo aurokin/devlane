@@ -2,6 +2,15 @@
 
 Use this as the practical done bar.
 
+## Init
+
+- `devlane init` creates a valid `devlane.yaml` that passes schema validation
+- `devlane init` auto-detects runtime pattern from repo signals (compose files present → containerized; framework manifest without compose → bare-metal; neither → CLI)
+- `devlane init --template <name>` overrides detection and uses a named starter template
+- `devlane init --from <path>` copies an existing adapter as the starting point
+- `devlane init` refuses to overwrite an existing `devlane.yaml` unless `--force` is passed
+- `devlane prepare` on a directory with no `devlane.yaml` prints a pointer to `devlane init`
+
 ## Core contract
 
 - `devlane.yaml` can be loaded from repo root or an explicit path
