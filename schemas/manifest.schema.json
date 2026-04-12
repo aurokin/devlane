@@ -85,7 +85,6 @@
       "additionalProperties": false,
       "required": [
         "manifest",
-        "composeEnv",
         "stateRoot",
         "cacheRoot",
         "runtimeRoot"
@@ -95,7 +94,11 @@
           "type": "string"
         },
         "composeEnv": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Null when the adapter does not declare compose_files."
         },
         "stateRoot": {
           "type": "string"
@@ -112,9 +115,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "projectName",
-        "publicHost",
-        "publicUrl"
+        "projectName"
       ],
       "properties": {
         "projectName": {
@@ -124,7 +125,8 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "Null when host_patterns is not declared. When set, rendered from host_patterns.stable or host_patterns.dev based on lane mode."
         },
         "publicUrl": {
           "type": [
@@ -136,10 +138,33 @@
     },
     "ports": {
       "type": "object",
+      "description": "Keyed by service name. Every service declared in the adapter's ports[] has an entry.",
       "additionalProperties": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 65535
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "port",
+          "allocated"
+        ],
+        "properties": {
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Allocated port if allocated=true; adapter default if allocated=false (pre-prepare projection)."
+          },
+          "allocated": {
+            "type": "boolean",
+            "description": "True when the (app, lane, service) tuple has an entry in the host catalog. False when inspect is computing the manifest before prepare has ever run."
+          },
+          "healthUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Rendered as http://localhost:<port><health_path> when the adapter declares health_path on the port. Null otherwise."
+          }
+        }
       }
     },
     "compose": {
@@ -189,21 +214,6 @@
               }
             }
           }
-        }
-      }
-    },
-    "health": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "httpUrl": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       }
     },

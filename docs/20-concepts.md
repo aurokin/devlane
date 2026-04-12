@@ -38,10 +38,14 @@ Dev lanes should be isolated and disposable by default.
 
 A lane can run in one of two shapes:
 
-- **Bare-metal** (default) — the app binds real host ports directly. Ports are coordinated across the whole machine by the host catalog.
-- **Containerized** (opt-in) — the app runs behind a lane-aware reverse proxy on a hostname like `feature-x.demoapp.localhost`; internal services stay on the Compose network and do not bind host ports. Opted into by declaring `compose_files` in the adapter.
+- **Bare-metal** (default) — the app binds real host ports directly. Ports are coordinated across the whole machine by the host catalog. `devlane up` is a no-op unless the adapter opts in via `runtime.run`, in which case it either prints (default) or executes the declared commands.
+- **Containerized** (opt-in) — the app runs via Docker Compose with a lane-aware project name. Declared by adding `compose_files` to the adapter.
 
-The pattern is signaled implicitly by what the adapter declares: `ports` for bare-metal services, `compose_files` for container lifecycle. Many repos use only one; some use both.
+The pattern is signaled declaratively by what the adapter declares: `ports` for host-port services, `compose_files` for container lifecycle, `runtime.run` for bare-metal command guidance, `host_patterns` for hostname-based discovery. Many repos use only some of these; all are optional and independent.
+
+## Hostnames are optional
+
+Hostname-based discovery (`feature-x.demoapp.localhost`) is a useful enhancement but not a baseline. Most bare-metal dev is reachable as `localhost:<port>` without any DNS or proxy setup. Adapters declare `host_patterns` when the host has a Caddy, Traefik, `/etc/hosts`, or other mechanism that resolves the rendered hostnames. When omitted, discovery is port-based via `manifest.ports.<service>.port`.
 
 ## Adapter
 

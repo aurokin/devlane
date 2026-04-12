@@ -5,14 +5,17 @@ kind: cli
 lane:
   stable_name: stable
   stable_branches: [main, master]
-  host_patterns:
-    stable: "warcraft.localhost"
-    dev: "{lane}.warcraft.localhost"
   project_pattern: "{app}_{lane}"
   path_roots:
     state: ".devlane/state"
     cache: ".devlane/cache"
     runtime: ".warcraft/runtime"
+
+  # host_patterns is optional. Uncomment if you have a proxy or DNS
+  # resolving these hostnames.
+  # host_patterns:
+  #   stable: "warcraft.localhost"
+  #   dev: "{lane}.warcraft.localhost"
 
 runtime:
   compose_files:
@@ -28,5 +31,3 @@ outputs:
   generated:
     - template: "templates/worktree-env.sh.tmpl"
       destination: ".warcraft/worktree-env.sh"
-
-health: {}

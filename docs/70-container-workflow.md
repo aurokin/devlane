@@ -1,36 +1,49 @@
 # Container workflow
 
-This is the **opt-in containerized pattern** in `devlane`. It is the recommended shape for repos whose services all run in containers and speak HTTP — declare `compose_files` in the adapter to use it.
+This is the **opt-in containerized pattern** in `devlane`. It is the recommended shape for repos whose services all run in containers — declare `compose_files` in the adapter to use it.
 
 The default pattern is bare-metal: see `75-baremetal-workflow.md`. The two patterns can coexist on the same machine — the host catalog keeps their ports from colliding.
 
 ## Baseline pattern
 
-1. each lane gets its own Compose project name
+1. each lane gets its own Compose project name (derived from `lane.project_pattern`)
 2. services talk to each other by Compose service name on the lane network
-3. only the ingress proxy binds host ports
-4. humans and agents use hostnames, not random host ports
+3. only ports the app actually needs on the host are bound (typically an ingress proxy, sometimes a database)
+4. hostname-based discovery is available when the adapter declares `host_patterns`
 
-When this pattern is in use, the adapter typically does not declare `ports`. Host-port allocation is unnecessary because nothing other than the shared proxy listens on the host. If a containerized service *does* need to bind a host port (a database for external tools, for example), declare it in the adapter like any other port and the catalog will allocate it.
+When the host has an ingress proxy (Caddy, Traefik, nginx) and a mechanism for `*.localhost` resolution, the adapter can declare `host_patterns` and lanes become reachable by name like `feature-x.agentchat.localhost`. This is the "polished" container setup.
 
-## Why this is simpler
+When the host has no proxy, containerized adapters still work — they just bind the necessary ports on the host (same as bare-metal) and rely on port-based discovery via the manifest.
 
-Host ports are a weak discovery mechanism for parallel work because they force people and agents to remember which app is on which number.
+## When this pattern declares ports
 
-A hostname like `feature-x.agentchat.localhost` is a much better discovery surface than “the frontend is on 31847 today”.
+Declare `ports` in the adapter whenever a containerized service needs to bind a host port. Common cases:
 
-## What `devlane` should generate
+- no ingress proxy is in use, and the app publishes its HTTP port directly to the host
+- a database or other service needs to be reachable from outside the compose network (a GUI tool, a migration script)
+- a non-HTTP service needs a host port (a gRPC server, a WebSocket endpoint)
 
-The shared tool should generate enough information for Compose and the proxy to agree on:
+If the host has an ingress proxy and only the proxy binds ports, the adapter typically omits `ports` entirely. The proxy handles port binding at the compose layer.
 
-- lane slug
-- Compose project name
-- public hostname
-- public URL
+## Hostnames are optional and orthogonal
 
-In this scaffold, that data is written to `.devlane/compose.env`.
+Hostnames are declarative — the adapter declares `host_patterns` when the user has a proxy or DNS mechanism that can resolve them. Devlane does not sniff the filesystem for Caddyfiles or Traefik labels; the adapter is the source of truth.
 
-## Recommended Compose pattern
+Bare-metal apps can also have hostnames (Caddy reverse-proxying to localhost works fine). Containerized apps can omit hostnames (plain port-publish is fine too). The two axes are independent.
+
+## What `devlane` generates
+
+When the compose pattern is in use, `prepare` writes `.devlane/compose.env` with:
+
+- `DEVLANE_COMPOSE_PROJECT` — the rendered project name
+- `DEVLANE_PUBLIC_HOST` — the rendered hostname (when `host_patterns` is declared; absent otherwise)
+- `DEVLANE_PUBLIC_URL` — the full URL (when `host_patterns` is declared; absent otherwise)
+- `DEVLANE_PORT_<NAME>` — allocated ports for any declared `ports[]` services
+- any entries from `runtime.env`
+
+Compose reads this file via `env_file` or the `--env-file` flag to pick up the lane-specific values.
+
+## Recommended Compose pattern (with proxy)
 
 - keep app services on fixed container ports
 - do **not** publish those ports to the host unless needed
@@ -62,10 +75,10 @@ In that case, the lane contract is still useful for:
 
 ## Rule of thumb
 
-For containerized web apps, prefer **hostname discovery** via this pattern.
+For HTTP apps behind an ingress proxy, prefer **hostname discovery** via this pattern.
 
 For bare-metal apps, prefer **catalog-allocated ports** via `75-baremetal-workflow.md`.
 
 For CLI repos, prefer **wrapper or activation discovery**.
 
-For all of the above, prefer one manifest over many hand-maintained conventions.
+For all of the above, read the manifest. Never guess.

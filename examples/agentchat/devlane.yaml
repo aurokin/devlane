@@ -34,6 +34,3 @@ outputs:
       destination: "apps/server/.env.local"
     - template: "templates/agentchat.config.json.tmpl"
       destination: "apps/server/agentchat.config.json"
-
-health:
-  http_url: "http://{public_host}/health"

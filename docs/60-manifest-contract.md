@@ -33,8 +33,16 @@ The manifest is the shared language between humans, agents, wrappers, and automa
     "publicUrl": "http://feature-x.demoapp.localhost"
   },
   "ports": {
-    "web": 3100,
-    "api": 4000
+    "web": {
+      "port": 3100,
+      "allocated": true,
+      "healthUrl": "http://localhost:3100/healthz"
+    },
+    "api": {
+      "port": 4000,
+      "allocated": true,
+      "healthUrl": null
+    }
   },
   "compose": {
     "files": ["/repo/path/compose.yaml"],
@@ -59,20 +67,59 @@ The manifest is the shared language between humans, agents, wrappers, and automa
 
 ## Ports
 
+Each entry in `manifest.ports` is an object:
+
+- `port` — integer, the assigned port
+- `allocated` — boolean, `true` when the `(app, lane, service)` tuple has an entry in the host catalog
+- `healthUrl` — string or null. Rendered from the adapter's `health_path` as `http://localhost:<port><health_path>`. Null when `health_path` is not declared.
+
 Ports are resolved from the host catalog at `prepare` time. Once allocated they are sticky — see `65-host-catalog.md`.
 
-- `manifest.ports.<name>` — integer, the assigned port for the service
-- `env.DEVLANE_PORT_<NAME>` — the same value as a string, available to compose and templates
+Stable lanes treat their declared `default` as a fixture: `prepare` either claims the default or fails loudly. Dev lanes allocate from the pool. Both write catalog entries and render this manifest shape the same way; the distinction shows up only in collision handling at `prepare`.
 
-Templates can reference ports via the existing dot-path mechanism:
+When the adapter declares no `ports`, the manifest still emits `ports: {}` so the shape stays stable for consumers. No `DEVLANE_PORT_*` env vars are emitted.
+
+### `allocated: false`
+
+`inspect --json` always recomputes the manifest in memory from the adapter and the current catalog. It never reads `.devlane/manifest.json` off disk, so it works before `prepare` has ever run.
+
+Before the first `prepare`, no catalog entry exists for `(app, lane, service)`. The manifest emits:
+
+```json
+"ports": {
+  "web": {"port": 3000, "allocated": false, "healthUrl": "http://localhost:3000/healthz"}
+}
+```
+
+`port` is the adapter's declared default. `allocated: false` tells the consumer "this is what devlane would allocate; run `prepare` to make it real." Agents should check `allocated` before relying on a port being bindable.
+
+### Env exports
+
+Templates and compose see ports as env:
+
+```
+DEVLANE_PORT_WEB=3100
+```
+
+Templates can also reference ports via the dot-path mechanism:
 
 ```
 PORT={{ports.web}}
 ```
 
-When the adapter declares no `ports`, the manifest still includes an empty `ports: {}` object and no `DEVLANE_PORT_*` env vars are emitted. This keeps the manifest shape stable for consumers.
+Agents should read `manifest.ports.<name>.port` rather than querying the catalog directly. The catalog is an implementation detail; the manifest is the contract.
 
-Agents should read `manifest.ports.<name>` rather than querying the catalog directly. The catalog is an implementation detail; the manifest is the contract.
+## Network
+
+- `projectName` — rendered Compose project name
+- `publicHost` — rendered hostname for the current lane mode, or `null` when `host_patterns` is not declared
+- `publicUrl` — full URL composed from `publicHost`, or `null` when `publicHost` is null
+
+Hostname-based discovery is optional. Bare-metal adapters that do not declare `host_patterns` emit `publicHost: null` and rely on port-based discovery via `ports.<name>.port`.
+
+## Paths
+
+`paths.composeEnv` is `null` when the adapter does not declare `compose_files`. All other `paths.*` fields are always present.
 
 ## Required qualities
 

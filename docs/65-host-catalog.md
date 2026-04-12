@@ -33,7 +33,7 @@ reserved:
   - 443
 ```
 
-- `port_range` bounds where `devlane` is allowed to allocate
+- `port_range` bounds where `devlane` is allowed to allocate from the pool
 - `reserved` ports are never allocated
 
 The file is optional. Defaults are baked in.
@@ -60,25 +60,99 @@ Each allocation answers "which port does this `(app, lane, service)` tuple own o
 
 The catalog is tool-owned. Humans and agents should not hand-edit it. Use `devlane host gc` and `devlane reassign` to change it.
 
+## Concurrency model
+
+The catalog is shared across every `devlane` invocation on the host. Two `prepare` commands from different terminals or agents can race.
+
+Devlane uses a lock-then-rename write discipline:
+
+1. Acquire an exclusive `fcntl.flock` on `~/.config/devlane/catalog.json.lock`. Acquire timeout is 30 seconds; after that, fail with a message naming the lock-holder's PID where possible.
+2. Read `catalog.json`.
+3. Compute the new allocation set.
+4. Write `catalog.json.tmp`.
+5. `os.rename` the temp file over `catalog.json` (atomic on POSIX).
+6. Release the lock.
+
+Every code path that mutates the catalog — `prepare`, `reassign`, `host gc` — uses this discipline. Readers (`inspect`, `port`) do not take the lock; they read `catalog.json` directly and accept that their view may be one write behind.
+
+The lock is OS-managed. If a process is killed mid-write, the lock releases automatically and the next writer reads the unmodified `catalog.json` (because the rename never happened).
+
+POSIX-first. Windows support is deferred to a later phase.
+
 ## Allocation algorithm
 
 When `prepare` runs, for each port declared in the adapter:
 
-1. If there is already a catalog entry for `(app, lane, service)`, keep that port. The allocation is sticky and is not re-probed.
-2. Otherwise, allocate a new port. Ports in `reserved` are never chosen by any path.
-   - if the declared `default` is not in `reserved`, try it first. The default may sit outside `port_range` — the adapter's choice is authoritative over the pool.
-   - if the default is unavailable, in `reserved`, or not declared, probe upward from the start of `port_range`, skipping anything in `reserved`.
-   - take the first bindable port.
-3. Write the allocation to the catalog.
-4. Refresh `lastPrepared`.
-
-When an adapter's declared `default` collides with `reserved`, `prepare` emits a warning on stderr and falls through to the pool walk. This is treated as a soft misconfiguration (typically from a user adding to `reserved` after the adapter was written) rather than a fatal error, so existing adapters keep working.
+1. **Existing allocation check.** If there is already a catalog entry for `(app, lane, service)`, keep that port. Do not re-probe. Do not move. Non-negotiable #10.
+2. **Stable-lane allocation (fixture).** If `lane` matches the adapter's `stable_name`, stable's declared `default` is a fixture claim:
+   - If the default is in `config.yaml.reserved`, `prepare` fails with a message telling the user to change either the adapter or `reserved`. No silent fallback.
+   - If the default is held by another catalog entry, `prepare` fails. See **Collision handling** below.
+   - Otherwise, take the default. Write the catalog entry.
+3. **Dev-lane allocation (pool).** If `lane` is a dev lane:
+   - Try the adapter's declared `default` first, unless it is in `reserved` or already held in the catalog.
+   - Otherwise walk `port_range` start-to-end, skipping anything in `reserved` and anything currently held in the catalog.
+   - Take the first bindable port. If no port in the pool is free, `prepare` fails and points the user at `devlane host gc` or widening `port_range`.
+4. **Refresh `lastPrepared`** on the entry.
 
 `prepare` only probes during allocation. It does not re-probe existing entries.
 
 ### Why `default` can sit outside `port_range`
 
-`port_range` is the pool `devlane` allocates *from* when the declared default is not available. It is not a hard constraint on what an adapter may prefer. Real apps sometimes need specific low-numbered ports (`80`, `443`, `5432`) that would never sit inside a typical dev range. `reserved` is the only hard "never touch this" list.
+`port_range` bounds the **pool** devlane allocates from when it needs to pick. It does not constrain adapter-declared `default`s. Real apps sometimes need specific low-numbered ports (`80`, `443`, `5432`) that would never sit inside a typical dev range. The adapter's choice is authoritative over the pool. `reserved` is the only hard "never touch this" list.
+
+## Stable ports are fixtures
+
+Stable's declared `default` is reserved in the catalog from the moment stable has been `prepare`d once. It survives `down`, reboots, and long periods of inactivity. The only paths that move a stable allocation are `devlane reassign` and `devlane host gc`.
+
+Fixture semantics require strictness: if stable cannot get its declared default, `prepare` fails loudly rather than silently falling back to a pool port. Silent fallback would defeat the whole point of a fixture — wrappers and docs could no longer rely on stable being at its declared port.
+
+Stable does not evict other lanes to take its fixture. Collisions are surfaced as errors that the user resolves explicitly.
+
+## Collision handling
+
+When stable's `prepare` finds its declared default already held:
+
+### Scenario 1: Held by another app's stable
+
+```
+ERROR: port 3000 is held by stable lane of app "otherapp" (service "api").
+Two stable fixtures cannot share a port.
+
+Resolve by editing one adapter's default, then re-running prepare:
+  - here:  /home/auro/code/myapp/devlane.yaml  (service "web", currently default: 3000)
+  - there: /home/auro/code/otherapp/devlane.yaml  (service "api", currently default: 3000)
+```
+
+Hard error. No command to run. Human picks which adapter moves.
+
+### Scenario 2: Held by a dev lane, port currently free (dev lane offline)
+
+```
+ERROR: port 3000 is held by dev lane "feature-x" (service "web") but is not currently bound.
+
+To move that dev lane aside and retry, run:
+
+  devlane reassign web --lane feature-x && devlane prepare
+```
+
+Soft error. Exact command printed, ready to paste. One command to resolve.
+
+### Scenario 3: Held by a dev lane, port currently bound (dev lane running)
+
+```
+ERROR: port 3000 is held by dev lane "feature-x" (service "web") and is currently bound by a running process.
+
+devlane does not stop other lanes' processes. Stop the dev lane yourself:
+
+  (in /home/auro/code/myapp-feature-x)
+  devlane down
+  devlane reassign web
+  devlane prepare
+
+Then retry prepare here.
+```
+
+Hard error with a recipe. Devlane does not kill foreign processes.
 
 ## Stickiness guarantee
 
@@ -90,14 +164,14 @@ Once allocated, a port does not move without an explicit action.
 
 The only commands that move a port are:
 
-- `devlane reassign <service>` — explicit repair
-- `devlane host gc` — explicit cleanup
+- `devlane reassign <service>` — explicit repair, scoped to the requested service
+- `devlane host gc` — explicit cleanup based on staleness heuristics
 
 This means lane identity is stable across stop/start cycles, worktree shelving, and machine reboots. Agents and external tools can cache port information with confidence.
 
 ## Probing
 
-Probing is a best-effort check that a port is bindable. In practice this means attempting to bind a TCP listener to the port on `localhost` and closing it immediately.
+Probing is a best-effort check that a port is bindable. Devlane probes both `0.0.0.0` (IPv4 any-interface) and `::` (IPv6 any-interface with `IPV6_V6ONLY=1`) with a TCP listener, closing immediately. A port is reported bindable only when both families succeed.
 
 Probing happens in:
 
@@ -114,11 +188,11 @@ Probing is TCP-only. UDP services are not yet supported by the catalog. Apps tha
 
 `devlane reassign <service>` is the repair tool.
 
-1. Look up the current allocation
-2. Probe the current port
-3. If bindable, no-op — return the current port
-4. If not bindable, find a new port using the same rules as initial allocation: ports in `reserved` are never chosen; honor the adapter's `default` if free and not reserved; otherwise walk `port_range`, skipping reserved, and take the first bindable port
-5. Update the catalog and re-run the write half of `prepare` (manifest, compose env, rendered templates)
+1. Look up the current allocation for `(app, lane, service)`. If invoked without flags, `lane` is derived from the cwd's adapter and git state. `--lane <name>` overrides with an explicit lane.
+2. Probe the current port.
+3. If bindable, no-op — return the current port.
+4. If not bindable, find a new port using the same rules as initial allocation. Stable lanes fail if their adapter's declared default is unavailable (fixture semantics). Dev lanes walk the pool.
+5. Update the catalog and re-run the write half of `prepare` (manifest, compose env, rendered templates).
 
 Calling `reassign` when nothing is wrong is safe. It is idempotent.
 
@@ -128,15 +202,15 @@ Only the requested service is moved. Sibling services and other lanes are untouc
 
 Catalog entries are never removed implicitly. `devlane host gc` is the only command that removes them.
 
-Default heuristic for gc candidates:
+Staleness heuristics — an allocation is stale if either:
 
-- `repoPath` no longer exists, or
-- the repo no longer has the declared lane (for git-backed lanes)
+1. `repoPath` no longer exists on disk, or
+2. the adapter at `repoPath` loads and no longer declares a service matching the allocation's `service` field.
 
 Optional flags:
 
-- `--older-than <duration>` — include entries whose `lastPrepared` is older than the given interval
 - `--app <name>` — scope gc to one app
+- `--dry-run` — print what would be removed, do not modify the catalog
 - `--yes` — skip the confirmation prompt
 
 By default `gc` prints what it would remove and prompts for confirmation.
@@ -159,6 +233,6 @@ The catalog is not portable across machines. Allocations are a function of local
 
 ## Relationship to the manifest
 
-The manifest is a snapshot of the catalog's view of one lane. For each port declared in the adapter, the manifest includes the resolved port number under `ports`, and the compose env exports `DEVLANE_PORT_<NAME>` for both compose and templates.
+The manifest is a snapshot of the catalog's view of one lane. For each port declared in the adapter, the manifest includes the resolved port number and allocation status under `ports.<name>`, and the compose env exports `DEVLANE_PORT_<NAME>` for both compose and templates.
 
 Agents should read ports from the manifest, not from the catalog directly. The catalog is an implementation detail. The manifest is the contract.

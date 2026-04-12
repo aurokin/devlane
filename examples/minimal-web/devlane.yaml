@@ -5,14 +5,17 @@ kind: web
 lane:
   stable_name: stable
   stable_branches: [main, master]
-  host_patterns:
-    stable: "{app}.localhost"
-    dev: "{lane}.{app}.localhost"
   project_pattern: "{app}_{lane}"
   path_roots:
     state: ".devlane/state"
     cache: ".devlane/cache"
     runtime: ".devlane/runtime"
+
+  # host_patterns is optional. Uncomment if you have a proxy or DNS
+  # resolving these hostnames (Caddy, Traefik, /etc/hosts, etc.).
+  host_patterns:
+    stable: "{app}.localhost"
+    dev: "{lane}.{app}.localhost"
 
 runtime:
   compose_files:
@@ -26,6 +29,7 @@ runtime:
 ports:
   - name: web
     default: 3000
+    health_path: /health
 
 outputs:
   manifest_path: ".devlane/manifest.json"
@@ -33,6 +37,3 @@ outputs:
   generated:
     - template: "templates/app.env.tmpl"
       destination: ".devlane/generated/app.env"
-
-health:
-  http_url: "http://{public_host}/health"

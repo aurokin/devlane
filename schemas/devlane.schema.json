@@ -8,7 +8,6 @@
     "app",
     "kind",
     "lane",
-    "runtime",
     "outputs"
   ],
   "properties": {
@@ -49,14 +48,19 @@
           }
         },
         "host_patterns": {
+          "description": "Optional. When declared, devlane renders hostnames and emits them in the manifest. Omit to use port-based discovery on localhost.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "stable": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "dev": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "pattern": ".*\\{lane\\}.*",
+              "description": "Must contain the {lane} placeholder so different dev lanes produce different hostnames."
             }
           }
         },
@@ -90,6 +94,7 @@
       }
     },
     "runtime": {
+      "description": "Optional. Declaring compose_files opts into the containerized pattern. Declaring run.commands gives devlane up something to surface for bare-metal apps.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -121,6 +126,51 @@
               "null"
             ]
           }
+        },
+        "run": {
+          "description": "Optional bare-metal command declarations. When absent, devlane up is a no-op for bare-metal. When present, devlane up either prints the rendered commands (mode: suggest, default) or runs them fire-and-forget (mode: execute).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "commands"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "suggest",
+                "execute"
+              ],
+              "description": "Defaults to 'suggest' when omitted. devlane init never scaffolds 'execute'; users must opt in consciously."
+            },
+            "commands": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "command"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Shell command with {{...}} templating. Scope includes ports.<name>, lane.*, app, runtime.env.*."
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -143,6 +193,11 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 65535
+          },
+          "health_path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional HTTP path (e.g., /healthz). When set, the manifest emits a health_url for this port as http://localhost:<port><health_path>."
           }
         }
       }
@@ -152,7 +207,6 @@
       "additionalProperties": false,
       "required": [
         "manifest_path",
-        "compose_env_path",
         "generated"
       ],
       "properties": {
@@ -162,7 +216,8 @@
         },
         "compose_env_path": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Required when runtime.compose_files is declared. Omit for pure bare-metal or CLI adapters."
         },
         "generated": {
           "type": "array",
@@ -180,19 +235,11 @@
               },
               "destination": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "Must resolve inside the repo root. Absolute paths outside the repo are refused at prepare time."
               }
             }
           }
-        }
-      }
-    },
-    "health": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "http_url": {
-          "type": "string"
         }
       }
     }

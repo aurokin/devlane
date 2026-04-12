@@ -4,23 +4,28 @@ The shared tool should own **lifecycle**, not product-specific business logic.
 
 ## Lifecycle commands
 
-- `init` — scaffold a starter `devlane.yaml`. Detects runtime pattern from repo signals (compose files → containerized; framework manifest without compose → bare-metal; neither → CLI). Flags: `--template <name>` uses a named starter template, `--from <path>` copies from any existing adapter, `--force` overwrites an existing file.
-- `inspect` — derive and print the manifest
-- `prepare` — write the manifest, compose env file, and generated files (allocates ports via the host catalog). If no `devlane.yaml` is found, points the user at `devlane init`.
-- `up` — run lane-aware `docker compose up`
-- `down` — run lane-aware `docker compose down` (does **not** release catalog ports)
-- `status` — run lane-aware `docker compose ps`
-- `doctor` — validate obvious prerequisites
+- `init` — scaffold a starter `devlane.yaml`. Detects runtime pattern from repo signals (compose files → containerized; framework manifest without compose → bare-metal; neither → CLI). Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--yes` skips interactive confirmation when stdin is a TTY, `--force` overwrites an existing file.
+- `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run (emits `allocated: false` for unallocated ports).
+- `prepare` — write the manifest, render generated files, and allocate ports via the host catalog. If no `devlane.yaml` is found, points the user at `devlane init`. If the compose pattern is in use, also writes `.devlane/compose.env`.
+- `up` — start the lane.
+  - **Containerized** (adapter declares `runtime.compose_files`): runs lane-aware `docker compose up`.
+  - **Bare-metal with `runtime.run` declared**: prints rendered commands (`mode: suggest`, default) or runs them fire-and-forget (`mode: execute`).
+  - **Bare-metal without `runtime.run`**: no-op. Prints a one-line hint pointing at `docs/75-baremetal-workflow.md`.
+- `down` — stop the lane.
+  - **Containerized**: runs lane-aware `docker compose down`. Does **not** release catalog ports.
+  - **Bare-metal**: no-op. Devlane does not manage bare-metal processes.
+- `status` — print lane state without mutating anything. For containerized, runs `docker compose ps`. For bare-metal, prints the manifest-derived summary.
+- `doctor` — validate obvious prerequisites.
 
 ## Host catalog commands
 
-- `port <service>` — print the currently assigned port for a service (plain number by default, `--verbose` for metadata, `--probe` to verify bindability via exit code)
-- `reassign <service>` — idempotent repair; probes the current port and only moves it if actually blocked, otherwise no-op
-- `host status` — list all allocations across the host
-- `host doctor` — probe every allocation and report live conflicts, missing repos, or other drift
-- `host gc` — remove catalog entries whose repos or lanes no longer exist (supports `--older-than`, `--app`, `--yes`)
+- `port <service>` — print the currently assigned port for a service. Plain number by default; `--verbose` for metadata; `--probe` to verify bindability via exit code.
+- `reassign <service>` — idempotent repair. Probes the current port and only moves it if actually blocked, otherwise no-op. `--lane <name>` operates on a specific lane by name without requiring a cd (the catalog has enough to find the right repo).
+- `host status` — list all allocations across the host.
+- `host doctor` — probe every allocation and report live conflicts, missing repos, or other drift.
+- `host gc` — remove catalog entries whose repos or services no longer exist. Staleness = `repoPath` missing OR adapter no longer declares the service. Supports `--app`, `--dry-run`, `--yes`.
 
-See `65-host-catalog.md` for the catalog contract and allocation model.
+See `65-host-catalog.md` for the catalog contract, allocation model, and fixture semantics for stable lanes.
 
 ## Ownership boundaries
 
@@ -42,6 +47,7 @@ The repo adapter owns:
 - which Compose files exist
 - which profiles are default
 - how repo-specific env/config files map from the manifest
+- bare-metal run commands (optional `runtime.run`)
 
 The repo itself owns:
 
@@ -49,6 +55,7 @@ The repo itself owns:
 - service definitions
 - product-specific wrapper semantics
 - stable deployment policy
+- bare-metal process supervision (devlane does not manage processes)
 
 ## Future commands that belong here
 
@@ -72,3 +79,5 @@ Example uses:
 - a shell wrapper reads the state root without re-deriving it
 - a proxy integration learns the lane hostname and project name
 - a test harness discovers generated output paths
+
+Because `inspect` recomputes from the adapter plus the current catalog, the command is always safe to run — it does not mutate state, and it works before `prepare` has ever run.

@@ -26,18 +26,73 @@ The catalog is what makes this work across projects. Without it, every repo woul
 ports:
   - name: web
     default: 3000
+    health_path: /healthz
   - name: api
     default: 4000
   - name: ws
     default: 4001
 ```
 
-Each entry names a service and a preferred port. The default is tried first; if unavailable the catalog walks `port_range` to find something free. See `65-host-catalog.md` for the full allocation model.
+Each entry names a service and a preferred port. `health_path` is optional and, when present, causes the manifest to emit a `healthUrl` for that service.
+
+The allocation model distinguishes stable lanes from dev lanes:
+
+- **Stable** lanes treat their declared `default` as a fixture. `prepare` either claims the default or fails loudly. Stable ports are reserved in the catalog once stable has been prepared, and they survive `down`, reboots, and long periods of inactivity.
+- **Dev** lanes allocate from the pool (`port_range` in `config.yaml`), skipping anything in `reserved` and anything already held in the catalog.
+
+See `65-host-catalog.md` for the full allocation model, collision scenarios, and resolution commands.
+
+## Optional: `runtime.run` for `devlane up` guidance
+
+`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run`. When declared, `up` either prints the rendered commands (default) or runs them as child processes (opt-in).
+
+```yaml
+runtime:
+  run:
+    mode: suggest   # suggest | execute   (default: suggest)
+    commands:
+      - name: web
+        description: "Start the Rails server"
+        command: "bin/rails server -p {{ports.web}}"
+      - name: worker
+        command: "bin/sidekiq"
+```
+
+### `mode: suggest`
+
+`devlane up` prints each rendered command with its description and exits. No process spawning. Safe to copy-paste into a terminal.
+
+```
+$ devlane up
+Bare-metal commands for lane "feature-x":
+
+  # Start the Rails server
+  bin/rails server -p 3100
+
+  bin/sidekiq
+```
+
+This is the recommended mode for most bare-metal adapters. The user is in the loop.
+
+### `mode: execute`
+
+`devlane up` runs each command as a fire-and-forget child process. No supervision, no restart, no log collection. The user is responsible for stopping the processes themselves.
+
+Execute mode is dangerous-by-design — it runs arbitrary shell from a checked-in YAML file. `devlane init` never scaffolds `mode: execute`. Users flip it consciously.
+
+### `devlane down` for bare-metal
+
+Always a no-op. Devlane does not track or stop bare-metal processes, even in `execute` mode. The catalog entry and manifest persist across stop/start cycles exactly as they do for containerized lanes.
+
+### Template scope
+
+`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates: `ports.<name>`, `lane.*`, `app`, `runtime.env.*`. New variables are added to both scopes together.
 
 ## What `prepare` produces
 
-- `manifest.ports.web`, `manifest.ports.api`, etc. — integers, the resolved ports
-- `DEVLANE_PORT_WEB=3100`, `DEVLANE_PORT_API=4000` in `.devlane/compose.env` — strings, same values
+- `manifest.ports.web.port`, `manifest.ports.api.port`, etc. — integers, the resolved ports
+- `manifest.ports.web.healthUrl` when `health_path` is declared on that port
+- `DEVLANE_PORT_WEB=3100`, `DEVLANE_PORT_API=4000` in `.devlane/compose.env` when compose is also in use (otherwise compose env is omitted)
 - any template can reference `{{ports.web}}` to render a real number into generated config
 
 ## Typical template
@@ -63,23 +118,25 @@ Now `devlane prepare` produces a `.env.local` whose port numbers are coordinated
 
 ## Agent workflow
 
-1. `devlane inspect --json` — read the lane
+1. `devlane inspect --json` — read the lane (works even before `prepare`; watch for `allocated: false`)
 2. `devlane prepare` — allocate ports, render templates
-3. start the service (the app reads its port from the rendered config)
+3. start the service (the app reads its port from the rendered config, or the agent runs `devlane up` for suggestion output)
 4. on conflict: check the manifest first, probe, then `reassign` only if needed (see `80-agent-playbook.md`)
 
 The agent never hard-codes port numbers. It reads them from the manifest every time.
 
 ## Stable versus dev in the bare-metal pattern
 
-Stable typically gets the default ports because it is the canonical lane and usually prepared first. Dev lanes for the same app land on the next available ports in `port_range`.
+Stable treats its declared `default` as a fixture. Dev lanes for the same app land on the next available ports in `port_range`.
 
-That asymmetry is intentional. Stable owns the "friendly" numbers the same way it owns friendly hostnames. External tools that cache a stable URL with a stable port keep working across lane churn.
+This is not a convention — it is enforced at `prepare` time. Stable either gets its fixture port or `prepare` fails with a message telling the user how to resolve. External tools and wrappers that cache a stable port keep working across dev-lane churn because the fixture is a promise the tool upholds.
 
 ## Rule of thumb
 
-For containerized web apps, prefer **hostname discovery** via `70-container-workflow.md`.
+For HTTP apps behind an ingress proxy, prefer **hostname discovery** via `70-container-workflow.md`.
 
-For bare-metal apps, prefer **catalog-allocated ports** via this pattern.
+For bare-metal apps, **catalog-allocated ports** via this pattern are first-class.
 
 For mixed repos, use both. Declare `ports` for the host-port services and let the container pattern handle the rest.
+
+Always read the manifest. Never guess.
