@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "devlane adapter",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "app",
+    "kind",
+    "lane",
+    "runtime",
+    "outputs"
+  ],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "const": 1
+    },
+    "app": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "web",
+        "cli",
+        "hybrid"
+      ]
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_name",
+        "stable_branches",
+        "project_pattern",
+        "path_roots"
+      ],
+      "properties": {
+        "stable_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_branches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host_patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stable": {
+              "type": "string"
+            },
+            "dev": {
+              "type": "string"
+            }
+          }
+        },
+        "project_pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path_roots": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "cache",
+            "runtime"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cache": {
+              "type": "string",
+              "minLength": 1
+            },
+            "runtime": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compose_files",
+        "default_profiles",
+        "optional_profiles",
+        "env"
+      ],
+      "properties": {
+        "compose_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default_profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "optional_profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_path",
+        "compose_env_path",
+        "generated"
+      ],
+      "properties": {
+        "manifest_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compose_env_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "template",
+              "destination"
+            ],
+            "properties": {
+              "template": {
+                "type": "string",
+                "minLength": 1
+              },
+              "destination": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "http_url": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "devlane manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "app",
+    "kind",
+    "repo",
+    "lane",
+    "paths",
+    "network",
+    "compose",
+    "outputs",
+    "env"
+  ],
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "const": 1
+    },
+    "app": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "web",
+        "cli",
+        "hybrid"
+      ]
+    },
+    "repo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "config",
+        "branch"
+      ],
+      "properties": {
+        "root": {
+          "type": "string"
+        },
+        "config": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "slug",
+        "mode",
+        "stable"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "dev"
+          ]
+        },
+        "stable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest",
+        "composeEnv",
+        "stateRoot",
+        "cacheRoot",
+        "runtimeRoot"
+      ],
+      "properties": {
+        "manifest": {
+          "type": "string"
+        },
+        "composeEnv": {
+          "type": "string"
+        },
+        "stateRoot": {
+          "type": "string"
+        },
+        "cacheRoot": {
+          "type": "string"
+        },
+        "runtimeRoot": {
+          "type": "string"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectName",
+        "publicHost",
+        "publicUrl"
+      ],
+      "properties": {
+        "projectName": {
+          "type": "string"
+        },
+        "publicHost": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "compose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files",
+        "profiles"
+      ],
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generated"
+      ],
+      "properties": {
+        "generated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "template",
+              "destination"
+            ],
+            "properties": {
+              "template": {
+                "type": "string"
+              },
+              "destination": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "httpUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

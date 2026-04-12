@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+export WARCRAFT_LANE="{{lane.slug}}"
+export WARCRAFT_MODE="{{lane.mode}}"
+export XDG_STATE_HOME="{{paths.stateRoot}}"
+export XDG_CACHE_HOME="{{paths.cacheRoot}}"
+export WARCRAFT_RUNTIME_ROOT="{{paths.runtimeRoot}}"
+export WARCRAFT_PUBLIC_HOST="{{network.publicHost}}"
+export PATH="$(pwd)/.venv/bin:${PATH}"

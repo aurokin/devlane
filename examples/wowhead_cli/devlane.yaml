@@ -1,0 +1,32 @@
+schema: 1
+app: warcraft
+kind: cli
+
+lane:
+  stable_name: stable
+  stable_branches: [main, master]
+  host_patterns:
+    stable: "warcraft.localhost"
+    dev: "{lane}.warcraft.localhost"
+  project_pattern: "{app}_{lane}"
+  path_roots:
+    state: ".devlane/state"
+    cache: ".devlane/cache"
+    runtime: ".warcraft/runtime"
+
+runtime:
+  compose_files:
+    - compose.yaml
+  default_profiles: []
+  optional_profiles: [redis]
+  env:
+    WARCRAFT_ALLOW_LINK_BIN: "0"
+
+outputs:
+  manifest_path: ".devlane/manifest.json"
+  compose_env_path: ".devlane/compose.env"
+  generated:
+    - template: "templates/worktree-env.sh.tmpl"
+      destination: ".warcraft/worktree-env.sh"
+
+health: {}

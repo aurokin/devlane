@@ -1,0 +1,39 @@
+schema: 1
+app: agentchat
+kind: web
+
+lane:
+  stable_name: stable
+  stable_branches: [main, master]
+  host_patterns:
+    stable: "{app}.localhost"
+    dev: "{lane}.{app}.localhost"
+  project_pattern: "{app}_{lane}"
+  path_roots:
+    state: ".devlane/state"
+    cache: ".devlane/cache"
+    runtime: ".devlane/runtime"
+
+runtime:
+  compose_files:
+    - compose.yaml
+    - compose.devlane.yaml
+  default_profiles: [web, server]
+  optional_profiles: [convex, codex]
+  env:
+    NEXT_PUBLIC_SITE_URL: "{public_url}"
+    AGENTCHAT_PUBLIC_HOST: "{public_host}"
+
+outputs:
+  manifest_path: ".devlane/manifest.json"
+  compose_env_path: ".devlane/compose.env"
+  generated:
+    - template: "templates/web.env.tmpl"
+      destination: "apps/web/.env.local"
+    - template: "templates/server.env.tmpl"
+      destination: "apps/server/.env.local"
+    - template: "templates/agentchat.config.json.tmpl"
+      destination: "apps/server/agentchat.config.json"
+
+health:
+  http_url: "http://{public_host}/health"

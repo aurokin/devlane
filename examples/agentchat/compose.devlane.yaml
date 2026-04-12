@@ -1,0 +1,12 @@
+services:
+  web:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${DEVLANE_COMPOSE_PROJECT}-web.rule=Host(`${DEVLANE_PUBLIC_HOST}`)"
+      - "traefik.http.services.${DEVLANE_COMPOSE_PROJECT}-web.loadbalancer.server.port=3000"
+
+  server:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${DEVLANE_COMPOSE_PROJECT}-api.rule=Host(`${DEVLANE_PUBLIC_HOST}`) && PathPrefix(`/api`)"
+      - "traefik.http.services.${DEVLANE_COMPOSE_PROJECT}-api.loadbalancer.server.port=4000"
