@@ -7,6 +7,7 @@
     "schema",
     "app",
     "kind",
+    "ready",
     "lane",
     "paths",
     "network",
@@ -29,6 +30,10 @@
         "cli",
         "hybrid"
       ]
+    },
+    "ready": {
+      "type": "boolean",
+      "description": "True iff the catalog has entries for every declared port (equivalently, every ports.*.allocated is true). Does not claim bindability or running state. When the adapter declares no ports, ready is true (no allocations to wait on). Fresh when emitted by inspect --json; snapshot when read from .devlane/manifest.json on disk."
     },
     "lane": {
       "type": "object",

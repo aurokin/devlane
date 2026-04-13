@@ -34,6 +34,14 @@ ports:
     stable_port: 4000
     pool_hint: [4100, 4199]
 
+worktree:
+  # Files copied from the source checkout when `devlane worktree create` runs.
+  # No defaults — every entry is explicit. Paths that also appear in
+  # outputs.generated below are skipped (prepare will render them).
+  seed:
+    - .env.secrets
+    - apps/server/config/master.key
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"

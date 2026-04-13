@@ -10,6 +10,12 @@ The kit contains three things at once:
 2. a **progressive-disclosure documentation set**
 3. **example adapters** for a minimal web app, `agentchat`, and `wowhead_cli`
 
+## Is this for you?
+
+Use devlane if you have **multiple agents working in parallel** on the same machine, or if you run many worktrees / many repos that keep fighting over the same host ports.
+
+If you are a single developer with one repo and one worktree, devlane is likely more machinery than you need — reach for a lighter per-directory env tool and a small task runner instead. See `docs/10-when-to-use-this.md` for the full adoption gate.
+
 ## The core idea
 
 Standardize a **lane contract**, not a universal pile of env var names.
@@ -35,7 +41,7 @@ The scaffold is intentionally small but useful:
 - writes `.devlane/manifest.json`
 - writes `.devlane/compose.env` (when `compose_files` is declared)
 - renders repo-local generated files from templates
-- builds lane-aware `docker compose` commands for containerized adapters; leaves `up` as a no-op (or a `runtime.run` suggest/execute) for bare-metal
+- builds lane-aware `docker compose` commands for containerized adapters; prints (never runs) bare-metal commands from `runtime.run.commands`
 - exposes `inspect`, `prepare`, `up`, `down`, `status`, `doctor`, and `init`
 
 ## What Phase 2 adds
@@ -43,7 +49,7 @@ The scaffold is intentionally small but useful:
 Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devlane/catalog.json` that coordinates host-port allocations across every `devlane`-managed repo on the machine. It adds:
 
 - `ports` declarations in the adapter (with optional `health_path`)
-- `ports` (as `{port, allocated, healthUrl?}` objects) and `DEVLANE_PORT_*` in the manifest
+- `ports` (as `{port, allocated, healthUrl?}` objects) and a top-level `ready` flag in the manifest, plus `DEVLANE_PORT_*` env
 - sticky, per-lane allocation with stable ports treated as fixtures (strict-fail on collision — see `docs/65-host-catalog.md`)
 - concurrent-safe catalog writes via `fcntl.flock` + atomic rename (POSIX-first)
 - `devlane port <service>` with `--verbose` and `--probe` (TCP probing on both `0.0.0.0` and `::`)
@@ -52,7 +58,7 @@ Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devl
 
 The docs and schemas describe the Phase 2 target state. See `docs/65-host-catalog.md` and `docs/100-implementation-plan.md`.
 
-Later phases cover worktree lifecycle, proxy integration, and stable deployment.
+Phase 3 adds minimal worktree lifecycle (`create` + `remove`, with adapter-declared `worktree.seed` copying credentials). That is the last planned phase — devlane stops there rather than drifting into proxy integration or deploy mechanics. See `docs/00-principles.md` for why.
 
 ## Start here
 
@@ -73,6 +79,8 @@ python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examp
 ## Progressive disclosure map
 
 - `docs/README.md` — the reading map
+- `docs/00-principles.md` — the design rules that govern every other choice in the tool
+- `docs/10-when-to-use-this.md` — whether devlane is the right fit for your setup
 - `docs/20-concepts.md` — lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, generated outputs
 - `docs/30-quickstart.md` — fastest path to a first success
 - `docs/40-cli-contract.md` — what the shared tool owns

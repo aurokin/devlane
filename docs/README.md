@@ -5,8 +5,10 @@ This docs set is organized for progressive disclosure. Read only as deep as you 
 ## Read in this order
 
 1. `../README.md`
-2. `20-concepts.md`
-3. `30-quickstart.md`
+2. `00-principles.md` — the design rules that govern every other choice in the tool
+3. `10-when-to-use-this.md` — whether devlane is the right fit for your setup
+4. `20-concepts.md`
+5. `30-quickstart.md`
 
 Then choose a branch:
 

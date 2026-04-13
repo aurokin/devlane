@@ -7,15 +7,16 @@ You are working on the shared `devlane` tool.
 1. `AGENTS.md`
 2. `README.md`
 3. `docs/README.md`
-4. `docs/40-cli-contract.md`
-5. `docs/50-adapter-schema.md`
-6. `docs/60-manifest-contract.md`
-7. `docs/65-host-catalog.md`
-8. `docs/70-container-workflow.md`
-9. `docs/75-baremetal-workflow.md`
-10. `docs/80-agent-playbook.md`
-11. `docs/100-implementation-plan.md`
-12. `docs/110-acceptance-checklist.md`
+4. `docs/00-principles.md` — **especially** the supervised-substrate rule and "no application framework" principle. New features must pass these before anything else.
+5. `docs/40-cli-contract.md`
+6. `docs/50-adapter-schema.md`
+7. `docs/60-manifest-contract.md`
+8. `docs/65-host-catalog.md`
+9. `docs/70-container-workflow.md`
+10. `docs/75-baremetal-workflow.md`
+11. `docs/80-agent-playbook.md`
+12. `docs/100-implementation-plan.md`
+13. `docs/110-acceptance-checklist.md`
 
 ## Goal
 

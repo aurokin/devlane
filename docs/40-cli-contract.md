@@ -1,6 +1,6 @@
 # CLI contract
 
-The shared tool should own **lifecycle**, not product-specific business logic.
+The shared tool should own **lifecycle**, not product-specific business logic. It owns state it writes and reads process state it can read safely; it does not spawn or stop user processes unless the substrate itself supervises them. See `00-principles.md` for the full rule.
 
 ## Lifecycle commands
 
@@ -10,16 +10,21 @@ The shared tool should own **lifecycle**, not product-specific business logic.
   - **ambiguous** — no confident signal. Scaffold a CLI template and print a notice pointing at `--template baremetal-web` or `--template containerized-web`.
 
   Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--app <path>` targets a specific subtree and skips scanning, `--list` prints detected candidates without writing anything, `--yes` / `--all` skip interactive prompts (also skipped when stdin is not a TTY), `--force` overwrites an existing file.
-- `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run (emits `allocated: false` for unallocated ports).
+- `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run (emits `allocated: false` for unallocated ports and `ready: false` at the top level).
 - `prepare` — write the manifest, render generated files, and allocate ports via the host catalog. If no `devlane.yaml` is found, points the user at `devlane init`. If the compose pattern is in use, also writes `.devlane/compose.env`.
-- `up` — start the lane.
-  - **Containerized** (adapter declares `runtime.compose_files`): runs lane-aware `docker compose up`.
-  - **Bare-metal with `runtime.run` declared**: prints rendered commands (`mode: suggest`, default) or runs them fire-and-forget (`mode: execute`).
-  - **Bare-metal without `runtime.run`**: no-op. Prints a one-line hint pointing at `docs/75-baremetal-workflow.md`.
+- `up` — start the lane. The semantics follow the supervised-substrate rule:
+  - **Containerized** (adapter declares `compose_files`): runs lane-aware `docker compose up`. Compose is the supervisor; devlane is a thin shell over it.
+  - **Bare-metal with `runtime.run.commands`**: prints the rendered commands and exits. Devlane does not spawn bare processes, because nothing would supervise them.
+  - **Bare-metal without `runtime.run.commands`**: no-op. Prints a one-line hint pointing at `docs/75-baremetal-workflow.md`.
+  - **Hybrid** (both `compose_files` and `runtime.run.commands`): prints the bare-metal commands first, then runs compose. If compose fails, the bare-metal plan is still visible above the error. Exit code follows compose.
 - `down` — stop the lane.
   - **Containerized**: runs lane-aware `docker compose down`. Does **not** release catalog ports.
-  - **Bare-metal**: no-op. Devlane does not manage bare-metal processes.
-- `status` — print lane state without mutating anything. For containerized, runs `docker compose ps`. For bare-metal, prints the manifest-derived summary.
+  - **Bare-metal**: no-op. Devlane does not track bare-metal processes, even if `up` printed commands for them.
+  - **Hybrid**: runs `docker compose down`. Bare-metal processes are the user's to stop.
+- `status` — print lane state without mutating anything. `status` is always safe because it only reads:
+  - **Containerized**: runs `docker compose ps`.
+  - **Bare-metal**: prints the manifest-derived summary.
+  - **Hybrid**: both.
 - `doctor` — validate obvious prerequisites.
 
 ## Host catalog commands
@@ -32,6 +37,15 @@ The shared tool should own **lifecycle**, not product-specific business logic.
 
 See `65-host-catalog.md` for the catalog contract, allocation model, and fixture semantics for stable lanes.
 
+## Worktree commands
+
+Worktree lifecycle is Phase 3 (see `100-implementation-plan.md`). The planned shape:
+
+- `worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. Registers the dev lane's ports in the catalog before the user starts anything. Seed copy reads the adapter's `worktree.seed` list.
+- `worktree remove <lane>` — `git worktree remove` + scoped `host gc` so the catalog self-cleans.
+
+`worktree list` is explicitly **not** planned. `git worktree list` plus `devlane host status` already tells you what's running where.
+
 ## Ownership boundaries
 
 The shared tool owns:
@@ -42,6 +56,7 @@ The shared tool owns:
 - compose project naming
 - compose env generation
 - template rendering
+- worktree creation and seed-file copying (Phase 3)
 - common health and diagnostic output
 - the host catalog and port allocation
 - `~/.config/devlane/catalog.json` (state, tool-written)
@@ -52,27 +67,20 @@ The repo adapter owns:
 - which Compose files exist
 - which profiles are default
 - how repo-specific env/config files map from the manifest
-- bare-metal run commands (optional `runtime.run`)
+- bare-metal run commands (`runtime.run.commands`, always printed, never executed by devlane)
+- which files are copied into a new worktree (`worktree.seed`)
 
 The repo itself owns:
 
 - application code
 - service definitions
 - product-specific wrapper semantics
-- stable deployment policy
+- stable deployment policy (devlane does not ship deploy mechanics)
 - bare-metal process supervision (devlane does not manage processes)
 
-## Future commands that belong here
+## Not in scope
 
-Once the current phases are stable, these commands likely belong in the shared tool:
-
-- `worktree create`
-- `worktree list`
-- `worktree remove`
-- `stable deploy`
-- `stable rollback`
-- `proxy register`
-- `proxy unregister`
+See `00-principles.md` principle #6 and non-negotiable #11 in `AGENTS.md`. Short version: no proxy integration, no deploy mechanics, no process supervision, no log collection, no `worktree list`.
 
 ## Why `inspect --json` matters
 
@@ -82,7 +90,9 @@ Example uses:
 
 - a coding agent finds the public URL without guessing a port
 - a shell wrapper reads the state root without re-deriving it
-- a proxy integration learns the lane hostname and project name
+- a proxy integration (user-owned, not devlane) learns the lane hostname and project name
 - a test harness discovers generated output paths
 
 Because `inspect` recomputes from the adapter plus the current catalog, the command is always safe to run — it does not mutate state, and it works before `prepare` has ever run.
+
+Agents should prefer `inspect --json` over reading `.devlane/manifest.json` off disk. The file is a snapshot from the last `prepare`; `inspect` is always fresh. See `60-manifest-contract.md` for the three-axes freshness explanation.

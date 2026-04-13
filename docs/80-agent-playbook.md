@@ -7,12 +7,33 @@ This document explains how coding agents should use `devlane`.
 When asked to work inside a repo that uses `devlane`, agents should prefer this sequence:
 
 1. `inspect --json`
-2. `prepare`
-3. `up` or `status`
+2. check `manifest.ready`
+3. `prepare` (if `ready: false`)
+4. `up` or `status`
 
 That order keeps discovery explicit and reproducible.
 
-`inspect --json` always works — it recomputes the manifest from the adapter plus the current catalog and never reads stale state off disk. Before `prepare` has ever run, ports will appear with `allocated: false` and the adapter's declared defaults as the port numbers. That is the signal that `prepare` has not been run yet.
+`inspect --json` always works — it recomputes the manifest from the adapter plus the current catalog and never reads stale state off disk. Before `prepare` has ever run, `manifest.ready` is `false` and ports appear with `allocated: false` and the adapter's declared defaults as the port numbers. That is the signal that `prepare` has not been run yet.
+
+## Always read `inspect --json`, not the file on disk
+
+`.devlane/manifest.json` on disk is a snapshot from the last `prepare`. It can drift if another process has run `reassign` or `host gc` since. `inspect --json` is always fresh.
+
+Agents should call `inspect --json` every time they need authoritative information. The file on disk is for wrappers and humans who want a static file to eyeball.
+
+See principle #3 in `docs/00-principles.md` and the "three axes of freshness" section in `docs/60-manifest-contract.md`.
+
+## What `ready` does (and doesn't) tell you
+
+`manifest.ready: true` means **the catalog has entries for every declared port**. That is it.
+
+It does not mean:
+
+- the port is bindable right now (another process might be squatting)
+- the lane is currently running
+- the health endpoint responds
+
+For "is the port actually bindable": `devlane port <svc> --probe`. For "is the lane running": `devlane status`. For health: hit `manifest.ports.<svc>.healthUrl` yourself.
 
 ## What agents should not do first
 
@@ -21,6 +42,7 @@ Avoid leading with:
 - guessing ports
 - editing generated env files directly
 - scraping random shell scripts
+- reading `.devlane/manifest.json` directly when `inspect --json` is available
 - assuming stable and dev use the same naming rules
 
 ## If a repo has no adapter yet
@@ -53,6 +75,7 @@ A repo adopting `devlane` only needs to answer a small number of questions:
 - which Compose files and profiles exist (if containerized)?
 - for bare-metal, what commands start the services (optional, powers `devlane up`)?
 - if the host has a proxy or DNS, what hostname pattern should lanes use (optional)?
+- which files (credentials, `.env.local`, etc.) should be copied into a new worktree (optional, powers `devlane worktree create`)?
 
 ## Discovery: hostnames vs ports
 
@@ -69,11 +92,11 @@ The manifest is the answer, not the agent's memory. An agent that has been runni
 
 When an agent encounters a port conflict, the order is:
 
-1. **Re-check the manifest.** Read `ports.<service>.port` again.
+1. **Re-read `inspect --json`.** Get a fresh manifest, including a fresh `ready` and fresh `ports.<service>.port`.
 2. If the manifest value differs from what the agent was using, the agent was stale. Use the manifest value. Done.
 3. If the manifest value matches what the agent was using, verify the port is actually free for us: `devlane port <service> --probe`. A non-zero exit confirms a real conflict.
 4. Only then: `devlane reassign <service>`. This is idempotent and scoped — it will no-op if the conflict resolved itself, and it will only move the one service.
-5. Re-read the manifest for the new port and continue.
+5. Re-read `inspect --json` for the new port and continue.
 
 Reassign should be the last step, not the first. Most "conflicts" are staleness, and the stickiness guarantee of the host catalog is only valuable if agents avoid unnecessary reassigns.
 
@@ -86,6 +109,35 @@ If `prepare` itself fails with a stable-fixture collision (see `65-host-catalog.
 - **Stable vs another app's stable** — no automatic resolution. The agent should report the error to the user and not pick a winner. Which app moves is a human decision.
 - **Stable vs offline dev lane** — the error includes a ready-to-paste `devlane reassign web --lane <name> && devlane prepare` command. The agent can run it.
 - **Stable vs bound dev lane** — the dev lane must be stopped first. The agent should report the error and not attempt to kill foreign processes.
+
+## Worktree lifecycle (Phase 3)
+
+When Phase 3 lands, agents should prefer `devlane worktree create <lane>` over `git worktree add` directly. The devlane command does three things in one:
+
+1. `git worktree add` at the conventional path
+2. copy every path listed in the adapter's `worktree.seed` from the source checkout (credentials, `.env.local`, secret keys) — skipping any that are also in `outputs.generated`, because `prepare` will render those
+3. run `prepare` in the new checkout so the catalog registers the new dev lane's ports
+
+After `worktree create` returns, the new worktree has everything it needs to run: its own lane identity, its own allocated ports, its own generated files, and whatever seed files the adapter declared. No manual copying.
+
+`devlane worktree remove <lane>` is the inverse: `git worktree remove` plus a scoped `host gc` so the catalog does not accumulate stale entries.
+
+Agents should **not**:
+
+- copy files between worktrees manually if `worktree.seed` covers them
+- run `host gc` as a cleanup step after removing a worktree — `worktree remove` already does it
+- propose a `worktree list` command — use `git worktree list` + `devlane host status`
+
+If the adapter has no `worktree.seed` block, the agent should surface that as adoption debt. Most adapters need at least `.env.local` or credentials seeded. See `docs/50-adapter-schema.md` for the schema.
+
+## `up` behavior by adapter shape
+
+- **Containerized** (`compose_files` only): `devlane up` runs `docker compose up`. Devlane owns the command; compose owns supervision.
+- **Bare-metal** (`runtime.run.commands` only): `devlane up` prints the rendered commands and exits. The agent (or user) runs them in a terminal.
+- **Hybrid** (both): `devlane up` prints the bare-metal commands first, then runs `docker compose up`. If compose fails, the printed commands stay visible in the terminal.
+- **Neither** (pure CLI or no lifecycle needs): `devlane up` is a no-op with a one-line hint.
+
+Agents should not assume `up` always runs something. Read the adapter to know which shape applies, or just trust `up`'s output — it is always self-describing.
 
 ## Good agent behavior
 

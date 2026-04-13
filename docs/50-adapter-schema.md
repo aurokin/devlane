@@ -2,7 +2,7 @@
 
 Each repo contributes a `devlane.yaml`.
 
-The adapter should stay small and declarative.
+The adapter should stay small and declarative. See principle #2 in `00-principles.md` — adapters describe, the tool orchestrates.
 
 ## Scaffolding a new adapter
 
@@ -51,6 +51,12 @@ ports:
 reserved:
   - 5555
 
+worktree:
+  seed:
+    - .env
+    - .env.local
+    - config/master.key
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"
@@ -93,16 +99,15 @@ When `host_patterns` is omitted:
 - `env` — extra env values that should be available to templates and Compose
 - `run` — optional bare-metal command declarations (see below)
 
-All fields are optional. Pure bare-metal repos that do not use Docker Compose can omit `compose_files` and the profile fields; the default runtime pattern is bare-metal (see `75-baremetal-workflow.md`). Declaring `compose_files` is what opts an adapter into the containerized pattern (see `70-container-workflow.md`).
+All fields are optional. Pure bare-metal repos that do not use Docker Compose can omit `compose_files` and the profile fields; the default runtime pattern is bare-metal (see `75-baremetal-workflow.md`). Declaring `compose_files` is what opts an adapter into the containerized pattern (see `70-container-workflow.md`). Declaring both gets the hybrid pattern.
 
 ### `runtime.run`
 
-Optional. Tells `devlane up` what to do on bare-metal. Without it, `up` is a no-op.
+Optional. Declares bare-metal commands that `devlane up` should print.
 
 ```yaml
 runtime:
   run:
-    mode: suggest   # suggest | execute   (default: suggest)
     commands:
       - name: web
         description: "Start the Rails API"
@@ -111,10 +116,9 @@ runtime:
         command: "bin/sidekiq"
 ```
 
-- `mode: suggest` (default) — `devlane up` prints the rendered commands and exits. Safe to copy-paste. No process spawning.
-- `mode: execute` — `devlane up` runs each command as a fire-and-forget child process. No supervision, no restart, no log collection. `devlane down` is still a no-op; users stop their own processes.
-
-`devlane init` never scaffolds `mode: execute`. Users opt into execution consciously by editing the field.
+- `devlane up` **always prints** these commands and exits. Devlane never spawns bare-metal processes — nothing would supervise them. This is the supervised-substrate rule (principle #1).
+- In a hybrid adapter (both `compose_files` and `runtime.run.commands`), `up` prints these commands first, then runs `docker compose up`. If compose fails, the bare-metal plan is still visible.
+- `devlane down` is always a no-op for bare-metal. Users stop their own processes.
 
 Commands accept `{{...}}` templating. The scope is the same as `outputs.generated` templates: `ports.<name>`, `lane.*`, `app`, `runtime.env.*`. New variables are added to both scopes together.
 
@@ -143,6 +147,25 @@ reserved:
 
 Merged with the host-wide `reserved` in `~/.config/devlane/config.yaml` at allocation time. Additive only — adapter `reserved` cannot un-reserve a port the host has reserved. Use this when a specific port is off-limits for *this app* even though the host is fine with it (e.g., the app's CI uses it for load testing).
 
+### `worktree`
+
+Optional. Controls Phase 3 worktree lifecycle behavior.
+
+```yaml
+worktree:
+  seed:
+    - .env
+    - .env.local
+    - config/master.key
+    - config/credentials/
+```
+
+- `seed` — explicit list of paths (relative to repo root) copied from the source checkout into a new worktree when `devlane worktree create` runs, **before `prepare`**. Directories are copied recursively. Missing source files warn and continue rather than failing.
+- Paths that also appear in `outputs.generated[].destination` are **skipped** with a one-line notice — `prepare` will render them, so seeding would just be shadowed.
+- The full list of copied paths is printed on completion, so the user can see exactly which credentials just moved.
+
+There is no default seed list. Devlane does not guess which files are sensitive or which secrets should follow a worktree. Each adapter declares its own list, explicitly. See principle #6 in `00-principles.md`.
+
 ### `outputs`
 
 - `manifest_path` — where to write the manifest
@@ -158,4 +181,4 @@ If you find yourself adding repo-specific imperative behavior to the adapter, st
 - core lifecycle logic, or
 - a repo-owned wrapper outside the adapter
 
-The adapter should describe, not orchestrate.
+The adapter should describe, not orchestrate. See principle #2.

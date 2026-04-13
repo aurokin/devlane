@@ -17,7 +17,9 @@ Read in this order unless you already know the area you are touching:
 
 1. `README.md`
 2. `docs/README.md`
-3. `docs/30-quickstart.md`
+3. `docs/00-principles.md`
+4. `docs/10-when-to-use-this.md`
+5. `docs/30-quickstart.md`
 
 Then branch by task:
 
@@ -30,18 +32,19 @@ Then branch by task:
 
 ## Non-negotiables
 
-These rules are the design center. Do not casually violate them.
+These rules are the design center. Do not casually violate them. The full reasoning lives in `docs/00-principles.md`; this list is the agent-facing summary.
 
-1. **Shared tool owns lifecycle.** Per-repo files stay declarative.
+1. **Shared tool owns state and supervised substrates; users own unsupervised processes.** Devlane mutates its own state (catalog, manifest, generated files, compose env, worktree seed copies) and executes commands against supervised substrates (`docker compose up`). It prints commands for unsupervised processes (`runtime.run.commands`) and refuses to fire-and-forget them.
 2. **Stable owns global names.** Stable may own friendly hostnames, global wrappers, or global service names. Dev lanes do not silently take them.
-3. **`inspect --json` is the source of truth for agents.** Agents should not scrape ad hoc env files when a manifest exists.
+3. **`inspect --json` is the source of truth for agents.** Agents should not scrape ad hoc env files when a manifest exists. `.devlane/manifest.json` on disk is a snapshot; `inspect --json` is fresh.
 4. **Generated files are tool-owned.** Repos may read generated files, but humans and agents should avoid manual edits except for explicit adoption flows.
-5. **Bare-metal is the default runtime pattern.** Most apps bind host ports directly and use the host catalog for coordinated allocation. Containerized apps are an opt-in alternative: declare `compose_files` to use them. For HTTP apps behind an ingress proxy, hostname discovery is preferred; for everything else, port-based discovery via `manifest.ports.<service>.port` on localhost is first-class. Hostnames are optional and orthogonal to the runtime pattern — a bare-metal app with Caddy can have hostnames, a containerized app with plain port-publish can skip them. The pattern is signaled declaratively by the adapter (presence of `ports`, `compose_files`, `host_patterns`, `runtime.run`) rather than inferred from the environment.
+5. **Bare-metal is the default runtime pattern.** Most apps bind host ports directly and use the host catalog for coordinated allocation. Containerized apps are an opt-in alternative: declare `compose_files` to use them. For HTTP apps behind an ingress proxy, hostname discovery is preferred; for everything else, port-based discovery via `manifest.ports.<service>.port` on localhost is first-class. Hostnames are optional and orthogonal to the runtime pattern. The pattern is signaled declaratively by the adapter (presence of `ports`, `compose_files`, `host_patterns`, `runtime.run`) rather than inferred from the environment.
 6. **Compose project names include the lane slug.** That is the baseline container namespace.
 7. **Keep core repo-agnostic.** App-specific env var names, wrapper names, and product rules live in adapters and examples, not in the core library.
 8. **Prefer additive, machine-readable contracts.** If the behavior changes, update docs, schemas, examples, and tests together.
 9. **The host catalog is tool-owned.** `~/.config/devlane/catalog.json` is written by the tool and read by everyone else. Humans and agents should not hand-edit it. User configuration lives in `~/.config/devlane/config.yaml`, which the tool only reads.
 10. **Port allocations are sticky.** Once a `(app, lane, service)` tuple has a port, it does not move except via explicit `reassign` or `gc`. Do not introduce code paths that re-probe existing allocations silently.
+11. **The tool does not become an application framework.** Proxy integration, deploy mechanics, process supervision, log collection, and credential management beyond the explicit `worktree.seed` copy are permanently out of scope. When a proposal feels useful but drifts into these territories, decline it and point at `docs/00-principles.md`.
 
 ## Working style
 
@@ -84,8 +87,9 @@ A feature is done when:
 3. Add `devlane init` as a zero-friction entry point for new adopters.
 4. Improve Compose lifecycle support.
 5. Land the host catalog and port allocation before anything that depends on cross-project coordination.
-6. Add worktree lifecycle support only after the manifest contract and host catalog are stable.
-7. Add proxy integration after lane naming, compose env generation, and the catalog are stable.
+6. Add worktree lifecycle support (`create` + `remove`, with `worktree.seed` copying) only after the manifest contract and host catalog are stable.
+
+Phase 4 (proxy integration) and Phase 5 (stable deploy) have been **cut from the roadmap** per non-negotiable #11. Do not propose them.
 
 ## Commands
 
@@ -106,3 +110,4 @@ python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examp
 - Do not make agents guess ports when a hostname or manifest can be authoritative.
 - Do not require every repo to reimplement orchestration logic.
 - Do not let dev lanes seize global wrappers or global hostnames by default.
+- Do not propose features that belong in an application framework — see non-negotiable #11 and `docs/00-principles.md`.

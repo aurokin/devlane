@@ -9,6 +9,7 @@ The manifest is the shared language between humans, agents, wrappers, and automa
   "schema": 1,
   "app": "demoapp",
   "kind": "web",
+  "ready": true,
   "lane": {
     "name": "feature-x",
     "slug": "feature-x",
@@ -59,9 +60,10 @@ The manifest is the shared language between humans, agents, wrappers, and automa
 
 ## Top-level shape
 
-Nine groups, no duplicates:
+Ten fields at the top level:
 
 - `schema`, `app`, `kind` — identity primitives
+- `ready` — boolean, true iff the catalog has entries for every declared port (see below)
 - `lane` — everything that identifies *this lane* (name/slug/mode/stable plus branch, repoRoot, configPath)
 - `paths` — where devlane writes things
 - `network` — project name + optional public hostname/URL
@@ -70,6 +72,38 @@ Nine groups, no duplicates:
 - `outputs` — generated template destinations
 
 There is no top-level `env` or `repo` block. Env is a *projection* computed at write time for `.devlane/compose.env` and template rendering (see below). Repo identity lives inside `lane`.
+
+## `ready`
+
+`manifest.ready` is a top-level boolean that answers one specific question: **is the catalog consistent with the adapter for this lane right now?**
+
+It is `true` iff every port the adapter declares has an allocation in the host catalog for this `(app, lane, service)` tuple. Equivalently, `ready` is `true` iff every entry in `manifest.ports.*.allocated` is `true`.
+
+This is the field agents should check first. It is cheaper than iterating `ports.*.allocated` and it states the question at the top level where it belongs.
+
+### What `ready` does *not* claim
+
+`ready: true` does **not** mean:
+
+- the ports are bindable right now (another process might be squatting on them)
+- the lane is running (`down` doesn't affect `ready`)
+- the health endpoints respond (devlane doesn't probe `healthUrl`)
+
+For each of those, there are separate surfaces:
+
+- **Bindability right now:** `devlane port <service> --probe` exits non-zero if something is on the port.
+- **Is the lane running:** `devlane status` (runs `docker compose ps` for containerized; prints manifest summary for bare-metal).
+- **Health endpoints:** your own code, hitting `manifest.ports.<svc>.healthUrl`.
+
+### The three axes of freshness
+
+There are actually three different "is this fresh" questions tangled up in the manifest. `ready` only answers the first one cleanly:
+
+1. **Has `prepare` finished for this lane?** → `ready`.
+2. **Is the catalog state still what `prepare` wrote?** → fresh `inspect --json`. On-disk `.devlane/manifest.json` is a snapshot and can drift if another process has run `reassign` or `host gc`.
+3. **Is the port actually bindable right now?** → `--probe`.
+
+Agents that care about freshness should re-run `inspect --json`. Agents that want bindability certainty should probe. `ready` is the cheap top-level "did prepare succeed for this lane" check — useful, but it does not substitute for either of the other two.
 
 ## Lane
 
@@ -87,7 +121,7 @@ Ports are resolved from the host catalog at `prepare` time. Once allocated they 
 
 Stable lanes use `stable_port` as a fixture when declared; otherwise the adapter's `default` plays both roles (dev-lane hint + stable fixture). Dev lanes allocate from the pool, preferring any `pool_hint` range before falling back to the host-wide `port_range`. Both write catalog entries and render this manifest shape the same way; the distinction shows up only in collision handling at `prepare`.
 
-When the adapter declares no `ports`, the manifest still emits `ports: {}` so the shape stays stable for consumers.
+When the adapter declares no `ports`, the manifest emits `ports: {}` and `ready: true` (there are no allocations to wait on). The shape stays stable for consumers.
 
 ### `allocated: false`
 
@@ -96,12 +130,13 @@ When the adapter declares no `ports`, the manifest still emits `ports: {}` so th
 Before the first `prepare`, no catalog entry exists for `(app, lane, service)`. The manifest emits:
 
 ```json
+"ready": false,
 "ports": {
   "web": {"port": 3000, "allocated": false, "healthUrl": "http://localhost:3000/healthz"}
 }
 ```
 
-`port` is the adapter's declared default (or `stable_port` on a stable lane, when declared). `allocated: false` tells the consumer "this is what devlane would allocate; run `prepare` to make it real." Agents should check `allocated` before relying on a port being bindable.
+`port` is the adapter's declared default (or `stable_port` on a stable lane, when declared). `ready: false` and `allocated: false` both tell the consumer "this is what devlane would allocate; run `prepare` to make it real." Agents should check `ready` (or at minimum the per-port `allocated`) before relying on a port being bindable.
 
 ## Paths
 
@@ -139,12 +174,12 @@ The projection is not stored in `manifest.json` because it is 1:1 derivable from
 
 ## Template scope
 
-Templates see every top-level manifest group (`app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs`) plus:
+Templates see every top-level manifest group (`app`, `kind`, `ready`, `lane`, `paths`, `network`, `compose`, `outputs`) plus:
 
 - `ports.<name>` — flattened to the integer port number (not the object). Use `{{ports.web}}` to get `3100`, not the `{port, allocated, healthUrl}` object.
 - `env.<KEY>` — the env projection described above.
 
-New variables are added to the template scope and the `runtime.run` command scope together.
+New variables are added to the template scope and the `runtime.run.commands` scope together.
 
 ## Required qualities
 
@@ -158,14 +193,14 @@ The manifest should be:
 
 ## Why agents should consume the manifest
 
-If agents read the manifest, they do not need to know:
+If agents read the manifest (via `inspect --json`, not the file on disk), they do not need to know:
 
 - which repo-specific env file exists
 - which stable/worktree variable names the repo chose
 - which hostname pattern the repo uses
 - where the runtime, state, or cache directories live
 
-The manifest centralizes those answers.
+The manifest centralizes those answers. See principle #3 in `00-principles.md`.
 
 ## Stability policy
 

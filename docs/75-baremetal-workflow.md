@@ -2,7 +2,13 @@
 
 This is the **default runtime pattern** in `devlane`. It is the shape for repos whose services run directly on the host — no containers, no shared ingress proxy, just processes binding real host ports.
 
-The opt-in alternative is containerized: see `70-container-workflow.md`. The two patterns can coexist on the same machine.
+The opt-in alternative is containerized: see `70-container-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both (hybrid mode).
+
+## Why `devlane up` never spawns bare processes
+
+Nothing supervises a bare `bin/rails server` process. If devlane fire-and-forgot it, there would be no log collection, no restart on crash, no `ps` command to check whether it's running, and no clean way to stop it. Reimplementing any of that would turn devlane into a process manager — a place this tool explicitly does not go. See principle #1 in `00-principles.md`.
+
+So `devlane up` **prints** the commands declared in `runtime.run.commands` and exits. The user (or agent) runs them in whatever shell, pane, or tab they prefer. Devlane stays out of the process lifecycle.
 
 ## What this pattern covers
 
@@ -37,19 +43,18 @@ Each entry names a service and a preferred port. `health_path` is optional and, 
 
 The allocation model distinguishes stable lanes from dev lanes:
 
-- **Stable** lanes treat their declared `default` as a fixture. `prepare` either claims the default or fails loudly. Stable ports are reserved in the catalog once stable has been prepared, and they survive `down`, reboots, and long periods of inactivity.
+- **Stable** lanes treat their declared `default` (or `stable_port`) as a fixture. `prepare` either claims the fixture or fails loudly. Stable ports are reserved in the catalog once stable has been prepared, and they survive `down`, reboots, and long periods of inactivity.
 - **Dev** lanes allocate from the pool (`port_range` in `config.yaml`), skipping anything in `reserved` and anything already held in the catalog.
 
 See `65-host-catalog.md` for the full allocation model, collision scenarios, and resolution commands.
 
 ## Optional: `runtime.run` for `devlane up` guidance
 
-`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run`. When declared, `up` either prints the rendered commands (default) or runs them as child processes (opt-in).
+`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits.
 
 ```yaml
 runtime:
   run:
-    mode: suggest   # suggest | execute   (default: suggest)
     commands:
       - name: web
         description: "Start the Rails server"
@@ -58,9 +63,7 @@ runtime:
         command: "bin/sidekiq"
 ```
 
-### `mode: suggest`
-
-`devlane up` prints each rendered command with its description and exits. No process spawning. Safe to copy-paste into a terminal.
+### `devlane up` output
 
 ```
 $ devlane up
@@ -72,17 +75,11 @@ Bare-metal commands for lane "feature-x":
   bin/sidekiq
 ```
 
-This is the recommended mode for most bare-metal adapters. The user is in the loop.
-
-### `mode: execute`
-
-`devlane up` runs each command as a fire-and-forget child process. No supervision, no restart, no log collection. The user is responsible for stopping the processes themselves.
-
-Execute mode is dangerous-by-design — it runs arbitrary shell from a checked-in YAML file. `devlane init` never scaffolds `mode: execute`. Users flip it consciously.
+The user copies these into terminal tabs, or pipes them through `sh` if they want to, or hands them to a process supervisor they already use. Devlane does not run them.
 
 ### `devlane down` for bare-metal
 
-Always a no-op. Devlane does not track or stop bare-metal processes, even in `execute` mode. The catalog entry and manifest persist across stop/start cycles exactly as they do for containerized lanes.
+Always a no-op. Devlane does not track or stop bare-metal processes. The catalog entry and manifest persist across stop/start cycles exactly as they do for containerized lanes.
 
 ### Template scope
 
@@ -92,6 +89,7 @@ Always a no-op. Devlane does not track or stop bare-metal processes, even in `ex
 
 - `manifest.ports.web.port`, `manifest.ports.api.port`, etc. — integers, the resolved ports
 - `manifest.ports.web.healthUrl` when `health_path` is declared on that port
+- `manifest.ready: true` once every declared port has an allocation
 - `DEVLANE_PORT_WEB=3100`, `DEVLANE_PORT_API=4000` in `.devlane/compose.env` when compose is also in use (otherwise compose env is omitted)
 - any template can reference `{{ports.web}}` to render a real number into generated config
 
@@ -118,18 +116,22 @@ Now `devlane prepare` produces a `.env.local` whose port numbers are coordinated
 
 ## Agent workflow
 
-1. `devlane inspect --json` — read the lane (works even before `prepare`; watch for `allocated: false`)
+1. `devlane inspect --json` — read the lane (works even before `prepare`; check `ready` before relying on port numbers)
 2. `devlane prepare` — allocate ports, render templates
-3. start the service (the app reads its port from the rendered config, or the agent runs `devlane up` for suggestion output)
+3. start the service (the app reads its port from the rendered config, or the agent runs `devlane up` to print the suggested commands)
 4. on conflict: check the manifest first, probe, then `reassign` only if needed (see `80-agent-playbook.md`)
 
 The agent never hard-codes port numbers. It reads them from the manifest every time.
 
 ## Stable versus dev in the bare-metal pattern
 
-Stable treats its declared `default` as a fixture. Dev lanes for the same app land on the next available ports in `port_range`.
+Stable treats its declared `default` (or `stable_port`) as a fixture. Dev lanes for the same app land on the next available ports in `port_range`.
 
 This is not a convention — it is enforced at `prepare` time. Stable either gets its fixture port or `prepare` fails with a message telling the user how to resolve. External tools and wrappers that cache a stable port keep working across dev-lane churn because the fixture is a promise the tool upholds.
+
+## Hybrid: compose sidecars plus bare-metal dev server
+
+Adapters can declare both `compose_files` and `runtime.run.commands`. In that case, `devlane up` prints the bare-metal commands first and then runs `docker compose up` for the supervised services. If compose fails, the bare-metal plan is still visible above the error. See `70-container-workflow.md` for the hybrid details.
 
 ## Rule of thumb
 

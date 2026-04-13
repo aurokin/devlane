@@ -38,7 +38,7 @@ Dev lanes should be isolated and disposable by default.
 
 A lane can run in one of two shapes:
 
-- **Bare-metal** (default) — the app binds real host ports directly. Ports are coordinated across the whole machine by the host catalog. `devlane up` is a no-op unless the adapter opts in via `runtime.run`, in which case it either prints (default) or executes the declared commands.
+- **Bare-metal** (default) — the app binds real host ports directly. Ports are coordinated across the whole machine by the host catalog. `devlane up` is a no-op unless the adapter opts in via `runtime.run.commands`, in which case it prints the declared commands and exits. Devlane never spawns bare processes itself — see principle #1 in `00-principles.md`.
 - **Containerized** (opt-in) — the app runs via Docker Compose with a lane-aware project name. Declared by adding `compose_files` to the adapter.
 
 The pattern is signaled declaratively by what the adapter declares: `ports` for host-port services, `compose_files` for container lifecycle, `runtime.run` for bare-metal command guidance, `host_patterns` for hostname-based discovery. Many repos use only some of these; all are optional and independent.

@@ -7,12 +7,14 @@ You are adapting an existing repository to the `devlane` lane model.
 1. `AGENTS.md`
 2. `README.md`
 3. `docs/README.md`
-4. `docs/50-adapter-schema.md`
-5. `docs/60-manifest-contract.md`
-6. `docs/65-host-catalog.md`
-7. `docs/75-baremetal-workflow.md` (default) and `docs/70-container-workflow.md` (opt-in), whichever matches the repo
-8. `docs/80-agent-playbook.md`
-9. `docs/90-example-integrations.md`
+4. `docs/00-principles.md`
+5. `docs/10-when-to-use-this.md`
+6. `docs/50-adapter-schema.md`
+7. `docs/60-manifest-contract.md`
+8. `docs/65-host-catalog.md`
+9. `docs/75-baremetal-workflow.md` (default) and `docs/70-container-workflow.md` (opt-in), whichever matches the repo
+10. `docs/80-agent-playbook.md`
+11. `docs/90-example-integrations.md`
 
 ## Goal
 
@@ -44,10 +46,12 @@ Add a small declarative `devlane.yaml` to the target repo and make the shared to
 2. inspect the current repo for generated env/config files and local wrapper scripts
 3. map those files into `outputs.generated`
 4. define lane naming, hostname, and Compose project patterns
-5. make `python -m devlane inspect --json` meaningful in the repo
-6. make `python -m devlane prepare` recreate the current generated local files
-7. if the repo uses Compose, make `up` and `down` lane-aware
-8. update docs and examples
+5. ask the repo owner which files belong in `worktree.seed` (credentials, `.env.secrets`, master keys — files that cannot be templated because they are per-developer or per-deploy). Declare them explicitly; no defaults.
+6. make `python -m devlane inspect --json` meaningful in the repo; check `ready` reflects allocation state accurately
+7. make `python -m devlane prepare` recreate the current generated local files
+8. if the repo uses Compose, make `up` and `down` lane-aware
+9. if the repo has bare-metal dev commands (`npm run dev`, `bin/rails server`), declare them under `runtime.run.commands` so `devlane up` can print them — devlane never spawns bare processes
+10. update docs and examples
 
 ## Definition of done
 

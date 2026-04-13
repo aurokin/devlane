@@ -128,21 +128,13 @@
           }
         },
         "run": {
-          "description": "Optional bare-metal command declarations. When absent, devlane up is a no-op for bare-metal. When present, devlane up either prints the rendered commands (mode: suggest, default) or runs them fire-and-forget (mode: execute).",
+          "description": "Optional bare-metal command declarations. When absent, devlane up is a no-op for bare-metal. When present, devlane up prints the rendered commands and exits. Devlane never spawns bare-metal processes (supervised-substrate rule, docs/00-principles.md).",
           "type": "object",
           "additionalProperties": false,
           "required": [
             "commands"
           ],
           "properties": {
-            "mode": {
-              "type": "string",
-              "enum": [
-                "suggest",
-                "execute"
-              ],
-              "description": "Defaults to 'suggest' when omitted. devlane init never scaffolds 'execute'; users must opt in consciously."
-            },
             "commands": {
               "type": "array",
               "minItems": 1,
@@ -227,6 +219,21 @@
         "maximum": 65535
       },
       "description": "Optional. Additional ports the catalog should never allocate for this app. Merged with the host-wide reserved list from ~/.config/devlane/config.yaml. Additive only; adapter reserved cannot un-reserve host reserved."
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional. Controls Phase 3 worktree lifecycle behavior.",
+      "properties": {
+        "seed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Explicit list of paths (relative to repo root) to copy from the source checkout into a new worktree, before prepare runs. Directories are copied recursively. Missing source files warn and continue. Paths that also appear in outputs.generated are skipped with a notice. No defaults; devlane does not guess which files are sensitive."
+        }
+      }
     },
     "outputs": {
       "type": "object",
