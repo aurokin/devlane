@@ -23,12 +23,14 @@ runtime:
   env:
     APP_MODE: development
 
+ports:
+  - name: web
+    default: 3000
+    health_path: /health
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"
   generated:
     - template: "templates/app.env.tmpl"
       destination: ".devlane/generated/app.env"
-
-health:
-  http_url: "http://{public_host}/health"

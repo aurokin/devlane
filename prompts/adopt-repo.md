@@ -11,7 +11,8 @@ You are adapting an existing repository to the `devlane` lane model.
 5. `docs/60-manifest-contract.md`
 6. `docs/65-host-catalog.md`
 7. `docs/75-baremetal-workflow.md` (default) and `docs/70-container-workflow.md` (opt-in), whichever matches the repo
-8. `docs/90-example-integrations.md`
+8. `docs/80-agent-playbook.md`
+9. `docs/90-example-integrations.md`
 
 ## Goal
 
@@ -27,7 +28,7 @@ Add a small declarative `devlane.yaml` to the target repo and make the shared to
 - do not add app-specific logic to the core unless it is clearly generalizable
 - generated files should be tool-owned
 - stable owns global names
-- prefer hostname discovery over port guesswork for HTTP apps
+- prefer the manifest (`ports.<service>.port`, rendered hostnames if declared) over repo-specific port or hostname guesswork
 
 ## Deliverables
 

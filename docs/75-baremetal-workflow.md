@@ -133,10 +133,8 @@ This is not a convention — it is enforced at `prepare` time. Stable either get
 
 ## Rule of thumb
 
-For HTTP apps behind an ingress proxy, prefer **hostname discovery** via `70-container-workflow.md`.
+Bare-metal ports via the catalog are first-class. If the host also runs an ingress proxy (Caddy, Traefik), the adapter can declare `host_patterns` and expose `publicHost` / `publicUrl` in the manifest — hostnames are orthogonal to the bare-metal pattern, not exclusive to containers.
 
-For bare-metal apps, **catalog-allocated ports** via this pattern are first-class.
-
-For mixed repos, use both. Declare `ports` for the host-port services and let the container pattern handle the rest.
+For mixed repos, declare `ports` for the host-port services and add `compose_files` for the containerized ones; the manifest carries both.
 
 Always read the manifest. Never guess.

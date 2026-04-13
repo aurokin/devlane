@@ -33,19 +33,21 @@ The scaffold is intentionally small but useful:
 - reads a declarative `devlane.yaml`
 - derives a lane manifest from the current checkout
 - writes `.devlane/manifest.json`
-- writes `.devlane/compose.env`
+- writes `.devlane/compose.env` (when `compose_files` is declared)
 - renders repo-local generated files from templates
-- builds lane-aware `docker compose` commands
-- exposes `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
+- builds lane-aware `docker compose` commands for containerized adapters; leaves `up` as a no-op (or a `runtime.run` suggest/execute) for bare-metal
+- exposes `inspect`, `prepare`, `up`, `down`, `status`, `doctor`, and `init`
 
 ## What Phase 2 adds
 
 Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devlane/catalog.json` that coordinates host-port allocations across every `devlane`-managed repo on the machine. It adds:
 
-- `ports` declarations in the adapter
-- `ports` and `DEVLANE_PORT_*` in the manifest
-- `devlane port <service>` and `devlane port <service> --probe`
-- `devlane reassign <service>` (idempotent, scoped)
+- `ports` declarations in the adapter (with optional `health_path`)
+- `ports` (as `{port, allocated, healthUrl?}` objects) and `DEVLANE_PORT_*` in the manifest
+- sticky, per-lane allocation with stable ports treated as fixtures (strict-fail on collision — see `docs/65-host-catalog.md`)
+- concurrent-safe catalog writes via `fcntl.flock` + atomic rename (POSIX-first)
+- `devlane port <service>` with `--verbose` and `--probe` (TCP probing on both `0.0.0.0` and `::`)
+- `devlane reassign <service>` (idempotent, scoped, supports `--lane`)
 - `devlane host status`, `host doctor`, `host gc`
 
 The docs and schemas describe the Phase 2 target state. See `docs/65-host-catalog.md` and `docs/100-implementation-plan.md`.

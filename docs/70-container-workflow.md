@@ -75,10 +75,8 @@ In that case, the lane contract is still useful for:
 
 ## Rule of thumb
 
-For HTTP apps behind an ingress proxy, prefer **hostname discovery** via this pattern.
-
-For bare-metal apps, prefer **catalog-allocated ports** via `75-baremetal-workflow.md`.
+Read the manifest first. If the adapter declares `host_patterns` and you are behind an ingress proxy (Caddy, Traefik, `/etc/hosts`), use the rendered `publicHost` / `publicUrl`. Otherwise, use `manifest.ports.<service>.port` on localhost. Hostnames are orthogonal to runtime pattern: a bare-metal adapter can declare `host_patterns` if the host has DNS or a proxy resolving them, and a containerized adapter can skip them entirely.
 
 For CLI repos, prefer **wrapper or activation discovery**.
 
-For all of the above, read the manifest. Never guess.
+Never guess. The manifest tells you which discovery mode the adapter chose.

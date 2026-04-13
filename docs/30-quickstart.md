@@ -30,7 +30,8 @@ You should see a manifest with:
 - a lane name
 - a compose project name
 - derived state/cache/runtime roots
-- a public hostname
+- a `ports` section (the minimal example declares a `web` port; `allocated: false` until `prepare` runs)
+- rendered hostnames under `publicHost`/`publicUrl` (the minimal example declares `host_patterns`; adapters without it get `null`)
 - generated output paths
 
 ## 4. Generate local outputs
@@ -58,7 +59,7 @@ python -m devlane up \
   --dry-run
 ```
 
-Start with `--dry-run` so the exact Compose command is visible.
+Start with `--dry-run` so the exact Compose command is visible. The minimal example declares `compose_files`, so `up` drives Compose. For a bare-metal adapter (no `compose_files`), `up` is a no-op unless the adapter declares `runtime.run`, in which case it prints the rendered commands by default. See `75-baremetal-workflow.md`.
 
 ## 6. Adopt a real repo
 
