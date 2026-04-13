@@ -4,7 +4,12 @@ The shared tool should own **lifecycle**, not product-specific business logic.
 
 ## Lifecycle commands
 
-- `init` — scaffold a starter `devlane.yaml`. Detects runtime pattern from repo signals (compose files → containerized; framework manifest without compose → bare-metal; neither → CLI). Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--yes` skips interactive confirmation when stdin is a TTY, `--force` overwrites an existing file.
+- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. Outcomes:
+  - **single** — one candidate (at cwd). Scaffold in place. Today's default path.
+  - **monorepo** — multiple candidates. Print the list with inferred kind per candidate, prompt the user to pick one or all, and scaffold `devlane.yaml` in each chosen subtree. `--all` skips the prompt.
+  - **ambiguous** — no confident signal. Scaffold a CLI template and print a notice pointing at `--template baremetal-web` or `--template containerized-web`.
+
+  Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--app <path>` targets a specific subtree and skips scanning, `--list` prints detected candidates without writing anything, `--yes` / `--all` skip interactive prompts (also skipped when stdin is not a TTY), `--force` overwrites an existing file.
 - `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run (emits `allocated: false` for unallocated ports).
 - `prepare` — write the manifest, render generated files, and allocate ports via the host catalog. If no `devlane.yaml` is found, points the user at `devlane init`. If the compose pattern is in use, also writes `.devlane/compose.env`.
 - `up` — start the lane.

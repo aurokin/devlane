@@ -5,11 +5,17 @@ Use this as the practical done bar.
 ## Init
 
 - `devlane init` creates a valid `devlane.yaml` that passes schema validation
-- `devlane init` auto-detects runtime pattern from cwd signals (compose files present → containerized; framework manifest without compose → bare-metal; neither → CLI)
+- `devlane init` auto-detects runtime pattern from signals (compose files present → containerized; framework manifest without compose → bare-metal; neither → CLI)
+- `devlane init` scans cwd and up to depth 3 below for candidate app roots using `compose*.yaml`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Gemfile`, `*.csproj` as signals
+- `devlane init` in a single-candidate tree scaffolds in place (the common case)
+- `devlane init` in a multi-candidate tree enters monorepo mode: lists candidates with inferred kinds and prompts for one or all
+- `devlane init --all` in monorepo mode scaffolds an adapter in every candidate without prompting
+- `devlane init --app <path>` targets a specific subtree and skips scanning
+- `devlane init --list` prints detected candidates without writing anything
 - `devlane init --template <name>` overrides detection and uses a named starter template (`containerized-web`, `baremetal-web`, `cli`)
 - `devlane init --from <path>` copies an existing adapter as the starting point
 - `devlane init` refuses to overwrite an existing `devlane.yaml` unless `--force` is passed
-- `devlane init` prompts for confirmation when stdin is a TTY; `--yes` or a non-TTY stdin skips the prompt
+- `devlane init` prompts for confirmation when stdin is a TTY; `--yes` / `--all` / a non-TTY stdin skips the prompt
 - `devlane init` prints its detection reasoning (e.g., `Detected: containerized (found compose.yaml)`) so the user knows why it picked what it picked
 - `devlane init` scaffolds `host_patterns` as a commented-out block in all three templates; users opt in by uncommenting
 - `devlane init` never scaffolds `runtime.run.mode: execute`
@@ -27,6 +33,15 @@ Use this as the practical done bar.
 - stable vs dev mode is explicit or reproducible
 - paths, hostnames, and project names derive from the adapter
 - `host_patterns` is optional; the manifest emits `publicHost: null` when omitted
+
+## Manifest shape
+
+- top-level groups are exactly: `schema`, `app`, `kind`, `lane`, `paths`, `network`, `ports`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
+- `lane` carries `name`, `slug`, `mode`, `stable`, `branch`, `repoRoot`, `configPath` (the old top-level `repo` fields merged in)
+- `paths.composeEnv` is present only when the adapter declares `compose_files` — the key is omitted entirely otherwise, not set to `null`
+- `network.publicUrl` is `http://<publicHost>` when `publicHost` is set, `null` otherwise
+- env is a *projection* computed at write time, not stored in the manifest; consumers read it from `.devlane/compose.env` or the template `env.*` scope
+- template scope flattens `ports.<name>` to the integer port number (not the `{port, allocated, healthUrl}` object); templates use `{{ports.web}}` to get `3100`
 
 ## Generated outputs
 
@@ -68,7 +83,7 @@ Use this as the practical done bar.
 - allocations are sticky across `up`/`down`/`up` cycles
 - `prepare` does not re-probe existing allocations
 - `down` does not modify the catalog
-- stable lanes treat their declared `default` as a fixture
+- stable lanes treat `stable_port` as a fixture when declared, otherwise `default`
 - stable-lane `prepare` fails loudly on any collision (no silent fallback to pool)
 - stable-vs-stable collision prints both adapter paths; no command to paste
 - stable-vs-offline-dev collision prints a ready-to-paste `reassign --lane ... && prepare`
@@ -83,14 +98,17 @@ Use this as the practical done bar.
 - `devlane host gc` removes entries whose `repoPath` is missing OR whose service is no longer declared
 - `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
 - reserved ports in `config.yaml` are never allocated, even when they match a dev-lane adapter's declared `default`
-- stable-lane `prepare` fails when its declared `default` is in `reserved`
+- adapter-level `reserved` is merged with host `reserved` at allocation time; additive only
+- `pool_hint: [low, high]` is walked before the host-wide `port_range` during dev-lane pool allocation
+- `pool_hint` falls back silently to `port_range` when it sits outside the host range
+- stable-lane `prepare` fails when its fixture (`stable_port` or `default`) is in effective `reserved`
 - allocations from the pool stay within `port_range`
-- adapter-declared `default` ports are honored even when they sit outside `port_range`
+- adapter-declared `default` and `stable_port` are honored even when they sit outside `port_range`
 
 ## Validation strictness
 
 - schema-load errors fail before `prepare` logic runs: unknown schema version, invalid `kind`, duplicate `ports[].name`, `host_patterns.dev` missing `{lane}`, `host_patterns.stable == host_patterns.dev`, missing `outputs.manifest_path`
-- `prepare`-time errors fail loudly: `kind: cli` with non-empty `ports`, missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable default in `reserved`, pool exhaustion
+- `prepare`-time errors fail loudly: `kind: cli` with non-empty `ports`, missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable fixture in `reserved`, pool exhaustion
 - warnings do not block: adapter `default` changed since last allocation, `default` outside `port_range` (noted in `inspect --verbose`), `kind: web` with no `ports` and no `compose_files`
 
 ## Agent experience

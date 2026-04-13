@@ -84,15 +84,17 @@ POSIX-first. Windows support is deferred to a later phase.
 When `prepare` runs, for each port declared in the adapter:
 
 1. **Existing allocation check.** If there is already a catalog entry for `(app, lane, service)`, keep that port. Do not re-probe. Do not move. Non-negotiable #10.
-2. **Stable-lane allocation (fixture).** If `lane` matches the adapter's `stable_name`, stable's declared `default` is a fixture claim:
-   - If the default is in `config.yaml.reserved`, `prepare` fails with a message telling the user to change either the adapter or `reserved`. No silent fallback.
-   - If the default is held by another catalog entry, `prepare` fails. See **Collision handling** below.
-   - Otherwise, take the default. Write the catalog entry.
-3. **Dev-lane allocation (pool).** If `lane` is a dev lane:
-   - Try the adapter's declared `default` first, unless it is in `reserved` or already held in the catalog.
-   - Otherwise walk `port_range` start-to-end, skipping anything in `reserved` and anything currently held in the catalog.
-   - Take the first bindable port. If no port in the pool is free, `prepare` fails and points the user at `devlane host gc` or widening `port_range`.
-4. **Refresh `lastPrepared`** on the entry.
+2. **Merge reserved lists.** Effective `reserved` = host `config.yaml.reserved` ∪ adapter-level `reserved`. Adapter `reserved` is additive-only; it cannot un-reserve a host-reserved port.
+3. **Stable-lane allocation (fixture).** If `lane` matches the adapter's `stable_name`, the stable fixture is `stable_port` when declared on the port, otherwise `default`:
+   - If the fixture is in effective `reserved`, `prepare` fails with a message telling the user to change either the adapter or `reserved`. No silent fallback.
+   - If the fixture is held by another catalog entry, `prepare` fails. See **Collision handling** below.
+   - Otherwise, take the fixture. Write the catalog entry.
+4. **Dev-lane allocation (pool).** If `lane` is a dev lane:
+   - Try the adapter's declared `default` first, unless it is in effective `reserved` or already held in the catalog.
+   - If the port declares `pool_hint: [low, high]` and that range sits inside the host `port_range`, walk `[low, high]` start-to-end next, skipping `reserved` and held ports. Otherwise skip to the next step.
+   - Walk the full host `port_range` start-to-end, skipping `reserved` and held ports.
+   - Take the first bindable port. If no port is free, `prepare` fails and points the user at `devlane host gc` or widening `port_range`.
+5. **Refresh `lastPrepared`** on the entry.
 
 `prepare` only probes during allocation. It does not re-probe existing entries.
 
@@ -102,11 +104,24 @@ When `prepare` runs, for each port declared in the adapter:
 
 ## Stable ports are fixtures
 
-Stable's declared `default` is reserved in the catalog from the moment stable has been `prepare`d once. It survives `down`, reboots, and long periods of inactivity. The only paths that move a stable allocation are `devlane reassign` and `devlane host gc`.
+The stable fixture is `stable_port` when the adapter declares it on the port, otherwise `default`. Either way, the fixture is reserved in the catalog from the moment stable has been `prepare`d once. It survives `down`, reboots, and long periods of inactivity. The only paths that move a stable allocation are `devlane reassign` and `devlane host gc`.
 
-Fixture semantics require strictness: if stable cannot get its declared default, `prepare` fails loudly rather than silently falling back to a pool port. Silent fallback would defeat the whole point of a fixture — wrappers and docs could no longer rely on stable being at its declared port.
+Fixture semantics require strictness: if stable cannot get its fixture, `prepare` fails loudly rather than silently falling back to a pool port. Silent fallback would defeat the whole point of a fixture — wrappers and docs could no longer rely on stable being at its declared port.
 
 Stable does not evict other lanes to take its fixture. Collisions are surfaced as errors that the user resolves explicitly.
+
+### When to declare `stable_port` vs let `default` do the work
+
+Most adapters can leave `stable_port` unset — `default` plays both roles (dev-lane hint + stable fixture). Declare `stable_port` only when the team wants a distinct dev-lane preference:
+
+```yaml
+ports:
+  - name: web
+    default: 3100          # dev lanes prefer 3100 (then fall back to pool)
+    stable_port: 3000      # stable is pinned to 3000
+```
+
+This is a deliberate opt-in. The common shape is one number that means both.
 
 ## Collision handling
 

@@ -30,6 +30,11 @@ ports:
   - name: web
     default: 3000
     health_path: /health
+    # stable_port: 3000     # optional; when set, stable fixture asserts this value
+    # pool_hint: [3100, 3199]  # optional; dev-lane pool walks this subrange first
+
+# reserved:                 # optional; merged with host config reserved list
+#   - 3005
 
 outputs:
   manifest_path: ".devlane/manifest.json"

@@ -25,6 +25,11 @@ runtime:
   env:
     WARCRAFT_ALLOW_LINK_BIN: "0"
 
+# reserved is additive to the host-wide reserved list; use it to block ports
+# this app treats as off-limits (e.g., a load-test harness binds 5555).
+# reserved:
+#   - 5555
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"

@@ -7,14 +7,12 @@
     "schema",
     "app",
     "kind",
-    "repo",
     "lane",
     "paths",
     "network",
     "ports",
     "compose",
-    "outputs",
-    "env"
+    "outputs"
   ],
   "properties": {
     "schema": {
@@ -32,26 +30,6 @@
         "hybrid"
       ]
     },
-    "repo": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "root",
-        "config",
-        "branch"
-      ],
-      "properties": {
-        "root": {
-          "type": "string"
-        },
-        "config": {
-          "type": "string"
-        },
-        "branch": {
-          "type": "string"
-        }
-      }
-    },
     "lane": {
       "type": "object",
       "additionalProperties": false,
@@ -59,8 +37,12 @@
         "name",
         "slug",
         "mode",
-        "stable"
+        "stable",
+        "branch",
+        "repoRoot",
+        "configPath"
       ],
+      "description": "Identity of this lane. Merges the old top-level 'repo' object into 'lane' so every identity field lives in one place.",
       "properties": {
         "name": {
           "type": "string"
@@ -77,6 +59,15 @@
         },
         "stable": {
           "type": "boolean"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "repoRoot": {
+          "type": "string"
+        },
+        "configPath": {
+          "type": "string"
         }
       }
     },
@@ -89,16 +80,13 @@
         "cacheRoot",
         "runtimeRoot"
       ],
+      "description": "composeEnv is present only when the adapter declares compose_files; otherwise the key is omitted.",
       "properties": {
         "manifest": {
           "type": "string"
         },
         "composeEnv": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Null when the adapter does not declare compose_files."
+          "type": "string"
         },
         "stateRoot": {
           "type": "string"
@@ -132,7 +120,8 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "Convenience field: http://<publicHost> when publicHost is set, null otherwise."
         }
       }
     },
@@ -215,12 +204,6 @@
             }
           }
         }
-      }
-    },
-    "env": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
       }
     }
   }

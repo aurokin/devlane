@@ -24,6 +24,16 @@ runtime:
     NEXT_PUBLIC_SITE_URL: "{public_url}"
     AGENTCHAT_PUBLIC_HOST: "{public_host}"
 
+ports:
+  - name: web
+    default: 3000
+    stable_port: 3000
+    pool_hint: [3100, 3199]
+  - name: server
+    default: 4000
+    stable_port: 4000
+    pool_hint: [4100, 4199]
+
 outputs:
   manifest_path: ".devlane/manifest.json"
   compose_env_path: ".devlane/compose.env"

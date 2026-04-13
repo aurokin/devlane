@@ -9,16 +9,14 @@ The manifest is the shared language between humans, agents, wrappers, and automa
   "schema": 1,
   "app": "demoapp",
   "kind": "web",
-  "repo": {
-    "root": "/repo/path",
-    "config": "/repo/path/devlane.yaml",
-    "branch": "feature-x"
-  },
   "lane": {
     "name": "feature-x",
     "slug": "feature-x",
     "mode": "dev",
-    "stable": false
+    "stable": false,
+    "branch": "feature-x",
+    "repoRoot": "/repo/path",
+    "configPath": "/repo/path/devlane.yaml"
   },
   "paths": {
     "manifest": "/repo/path/.devlane/manifest.json",
@@ -55,15 +53,27 @@ The manifest is the shared language between humans, agents, wrappers, and automa
         "destination": "/repo/path/.devlane/generated/app.env"
       }
     ]
-  },
-  "env": {
-    "DEVLANE_APP": "demoapp",
-    "DEVLANE_LANE": "feature-x",
-    "DEVLANE_PORT_WEB": "3100",
-    "DEVLANE_PORT_API": "4000"
   }
 }
 ```
+
+## Top-level shape
+
+Nine groups, no duplicates:
+
+- `schema`, `app`, `kind` — identity primitives
+- `lane` — everything that identifies *this lane* (name/slug/mode/stable plus branch, repoRoot, configPath)
+- `paths` — where devlane writes things
+- `network` — project name + optional public hostname/URL
+- `ports` — per-service allocation state
+- `compose` — resolved compose files and profiles
+- `outputs` — generated template destinations
+
+There is no top-level `env` or `repo` block. Env is a *projection* computed at write time for `.devlane/compose.env` and template rendering (see below). Repo identity lives inside `lane`.
+
+## Lane
+
+`lane.branch`, `lane.repoRoot`, and `lane.configPath` were the old top-level `repo` block; they now live under `lane` so every identity field is in one place.
 
 ## Ports
 
@@ -75,9 +85,9 @@ Each entry in `manifest.ports` is an object:
 
 Ports are resolved from the host catalog at `prepare` time. Once allocated they are sticky — see `65-host-catalog.md`.
 
-Stable lanes treat their declared `default` as a fixture: `prepare` either claims the default or fails loudly. Dev lanes allocate from the pool. Both write catalog entries and render this manifest shape the same way; the distinction shows up only in collision handling at `prepare`.
+Stable lanes use `stable_port` as a fixture when declared; otherwise the adapter's `default` plays both roles (dev-lane hint + stable fixture). Dev lanes allocate from the pool, preferring any `pool_hint` range before falling back to the host-wide `port_range`. Both write catalog entries and render this manifest shape the same way; the distinction shows up only in collision handling at `prepare`.
 
-When the adapter declares no `ports`, the manifest still emits `ports: {}` so the shape stays stable for consumers. No `DEVLANE_PORT_*` env vars are emitted.
+When the adapter declares no `ports`, the manifest still emits `ports: {}` so the shape stays stable for consumers.
 
 ### `allocated: false`
 
@@ -91,35 +101,50 @@ Before the first `prepare`, no catalog entry exists for `(app, lane, service)`. 
 }
 ```
 
-`port` is the adapter's declared default. `allocated: false` tells the consumer "this is what devlane would allocate; run `prepare` to make it real." Agents should check `allocated` before relying on a port being bindable.
+`port` is the adapter's declared default (or `stable_port` on a stable lane, when declared). `allocated: false` tells the consumer "this is what devlane would allocate; run `prepare` to make it real." Agents should check `allocated` before relying on a port being bindable.
 
-### Env exports
+## Paths
 
-Templates and compose see ports as env:
-
-```
-DEVLANE_PORT_WEB=3100
-```
-
-Templates can also reference ports via the dot-path mechanism:
-
-```
-PORT={{ports.web}}
-```
-
-Agents should read `manifest.ports.<name>.port` rather than querying the catalog directly. The catalog is an implementation detail; the manifest is the contract.
+`paths.composeEnv` is present only when the adapter declares `compose_files` (and `outputs.compose_env_path`). It is fully omitted otherwise — the key does not appear at all. All other `paths.*` fields are always present.
 
 ## Network
 
 - `projectName` — rendered Compose project name
 - `publicHost` — rendered hostname for the current lane mode, or `null` when `host_patterns` is not declared
-- `publicUrl` — full URL composed from `publicHost`, or `null` when `publicHost` is null
+- `publicUrl` — `http://<publicHost>` when `publicHost` is set, `null` otherwise. Convenience for consumers that want a URL without concatenating.
 
 Hostname-based discovery is optional. Bare-metal adapters that do not declare `host_patterns` emit `publicHost: null` and rely on port-based discovery via `ports.<name>.port`.
 
-## Paths
+## Env projection (not stored in the manifest)
 
-`paths.composeEnv` is `null` when the adapter does not declare `compose_files`. All other `paths.*` fields are always present.
+Two places consume an env projection:
+
+- `.devlane/compose.env` — written by `prepare` when compose is in use
+- template rendering — `{{env.DEVLANE_*}}` is available in any generated template
+
+The projection is computed at write time from the manifest plus the adapter's `runtime.env` block. Keys include:
+
+```
+DEVLANE_APP, DEVLANE_APP_SLUG, DEVLANE_KIND
+DEVLANE_BRANCH, DEVLANE_MODE, DEVLANE_LANE, DEVLANE_LANE_SLUG, DEVLANE_STABLE
+DEVLANE_REPO_ROOT, DEVLANE_CONFIG, DEVLANE_MANIFEST, DEVLANE_COMPOSE_ENV
+DEVLANE_STATE_ROOT, DEVLANE_CACHE_ROOT, DEVLANE_RUNTIME_ROOT
+DEVLANE_COMPOSE_PROJECT, DEVLANE_PUBLIC_HOST, DEVLANE_PUBLIC_URL
+DEVLANE_PORT_<NAME>  (one per declared port)
+```
+
+Plus any `runtime.env` keys declared in the adapter, with `{public_host}`, `{public_url}`, `{lane_name}`, `{lane_slug}`, `{app}`, `{mode}`, `{branch}`, `{project_name}`, `{state_root}`, `{cache_root}`, `{runtime_root}` expanded.
+
+The projection is not stored in `manifest.json` because it is 1:1 derivable from the other fields. Consumers that want env should read `.devlane/compose.env` or pass manifest + adapter through `compute_env()`.
+
+## Template scope
+
+Templates see every top-level manifest group (`app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs`) plus:
+
+- `ports.<name>` — flattened to the integer port number (not the object). Use `{{ports.web}}` to get `3100`, not the `{port, allocated, healthUrl}` object.
+- `env.<KEY>` — the env projection described above.
+
+New variables are added to the template scope and the `runtime.run` command scope together.
 
 ## Required qualities
 

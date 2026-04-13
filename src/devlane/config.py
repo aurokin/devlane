@@ -46,13 +46,17 @@ class RuntimeConfig:
 @dataclass(slots=True)
 class OutputsConfig:
     manifest_path: str
-    compose_env_path: str
+    compose_env_path: str | None
     generated: list[GeneratedOutput]
 
 
 @dataclass(slots=True)
-class HealthConfig:
-    http_url: str | None = None
+class PortConfig:
+    name: str
+    default: int
+    health_path: str | None = None
+    stable_port: int | None = None
+    pool_hint: tuple[int, int] | None = None
 
 
 @dataclass(slots=True)
@@ -63,7 +67,8 @@ class AdapterConfig:
     lane: LaneConfig
     runtime: RuntimeConfig
     outputs: OutputsConfig
-    health: HealthConfig
+    ports: list[PortConfig] = field(default_factory=list)
+    reserved: list[int] = field(default_factory=list)
 
     @property
     def allowed_profiles(self) -> list[str]:
@@ -108,7 +113,7 @@ def load_adapter(config_path: Path) -> AdapterConfig:
         ),
     )
 
-    runtime_data = _require_dict(data["runtime"], "runtime")
+    runtime_data = _require_dict(data.get("runtime", {}), "runtime")
     runtime = RuntimeConfig(
         compose_files=[str(x) for x in runtime_data.get("compose_files", [])],
         default_profiles=[str(x) for x in runtime_data.get("default_profiles", [])],
@@ -117,16 +122,43 @@ def load_adapter(config_path: Path) -> AdapterConfig:
     )
 
     outputs_data = _require_dict(data["outputs"], "outputs")
+    compose_env_raw = outputs_data.get("compose_env_path")
     outputs = OutputsConfig(
         manifest_path=str(outputs_data["manifest_path"]),
-        compose_env_path=str(outputs_data["compose_env_path"]),
+        compose_env_path=str(compose_env_raw) if compose_env_raw else None,
         generated=[
             GeneratedOutput(template=str(item["template"]), destination=str(item["destination"]))
             for item in outputs_data.get("generated", [])
         ],
     )
 
-    health = HealthConfig(http_url=_require_dict(data.get("health", {}), "health").get("http_url"))
+    ports: list[PortConfig] = []
+    seen_names: set[str] = set()
+    for raw_port in data.get("ports", []) or []:
+        port_data = _require_dict(raw_port, "ports[]")
+        name = str(port_data["name"])
+        if name in seen_names:
+            raise ValueError(f"duplicate port name: {name}")
+        seen_names.add(name)
+        hint_raw = port_data.get("pool_hint")
+        pool_hint: tuple[int, int] | None = None
+        if hint_raw is not None:
+            if not isinstance(hint_raw, list) or len(hint_raw) != 2:
+                raise ValueError(f"ports[{name}].pool_hint must be a [low, high] pair")
+            pool_hint = (int(hint_raw[0]), int(hint_raw[1]))
+            if pool_hint[0] > pool_hint[1]:
+                raise ValueError(f"ports[{name}].pool_hint low must be <= high")
+        ports.append(
+            PortConfig(
+                name=name,
+                default=int(port_data["default"]),
+                health_path=(str(port_data["health_path"]) if port_data.get("health_path") else None),
+                stable_port=(int(port_data["stable_port"]) if port_data.get("stable_port") is not None else None),
+                pool_hint=pool_hint,
+            )
+        )
+
+    reserved = [int(p) for p in data.get("reserved", []) or []]
 
     return AdapterConfig(
         schema=schema,
@@ -135,5 +167,6 @@ def load_adapter(config_path: Path) -> AdapterConfig:
         lane=lane,
         runtime=runtime,
         outputs=outputs,
-        health=health,
+        ports=ports,
+        reserved=reserved,
     )

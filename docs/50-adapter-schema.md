@@ -43,8 +43,13 @@ ports:
   - name: web
     default: 3000
     health_path: /healthz
+    stable_port: 3000
+    pool_hint: [3100, 3199]
   - name: api
     default: 4000
+
+reserved:
+  - 5555
 
 outputs:
   manifest_path: ".devlane/manifest.json"
@@ -115,15 +120,28 @@ Commands accept `{{...}}` templating. The scope is the same as `outputs.generate
 
 ### `ports`
 
-Optional. A list of named port needs, each with a preferred `default` and an optional HTTP `health_path`.
+Optional. A list of named port needs.
 
 - `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`)
-- `default` — preferred port, tried first during allocation
+- `default` — preferred port, tried first during dev-lane allocation. Plays the stable-fixture role too when `stable_port` is absent.
 - `health_path` — optional HTTP path. When declared, the manifest emits `ports.<name>.healthUrl` as `http://localhost:<port><health_path>`. Devlane itself does not probe this URL; it is for agents and tooling.
+- `stable_port` — optional. When declared, the stable lane asserts this port as a fixture at `prepare` time. Omit to let `default` play both roles. Declaring `stable_port` lets teams have a distinct dev-lane preference (via `default`) from the stable fixture.
+- `pool_hint` — optional `[low, high]` pair. Dev-lane pool allocation walks this subrange first before falling back to the host-wide `port_range`. Must sit inside the host range; if not, the walk falls back immediately.
 
 The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move unless `devlane reassign` or `devlane host gc` is run. See `65-host-catalog.md` for the allocation model, including the fixture semantics that apply to stable lanes.
 
 If `ports` is omitted, no ports are allocated. This is appropriate for pure-CLI repos that do not bind host ports.
+
+### `reserved`
+
+Optional. A list of port numbers this adapter should never allocate for dev lanes.
+
+```yaml
+reserved:
+  - 5555      # load-test harness
+```
+
+Merged with the host-wide `reserved` in `~/.config/devlane/config.yaml` at allocation time. Additive only — adapter `reserved` cannot un-reserve a port the host has reserved. Use this when a specific port is off-limits for *this app* even though the host is fine with it (e.g., the app's CI uses it for load testing).
 
 ### `outputs`
 

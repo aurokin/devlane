@@ -19,8 +19,8 @@ def test_prepare_writes_manifest_and_rendered_files(demo_repo: Path) -> None:
     )
 
     write_manifest(manifest)
-    write_compose_env(manifest)
-    render_outputs(manifest)
+    write_compose_env(manifest, adapter)
+    render_outputs(manifest, adapter)
 
     manifest_path = Path(manifest["paths"]["manifest"])
     compose_env_path = Path(manifest["paths"]["composeEnv"])

@@ -47,10 +47,10 @@ def _load(args: argparse.Namespace):
     return cwd, config_path, adapter, manifest
 
 
-def _prepare(manifest: dict) -> None:
+def _prepare(manifest: dict, adapter) -> None:
     write_manifest(manifest)
-    write_compose_env(manifest)
-    render_outputs(manifest)
+    write_compose_env(manifest, adapter)
+    render_outputs(manifest, adapter)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -101,12 +101,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "prepare":
-        _prepare(manifest)
+        _prepare(manifest, adapter)
         print(f"prepared lane '{manifest['lane']['name']}' at {manifest['paths']['manifest']}")
         return 0
 
     if args.command in {"up", "down", "status"}:
-        _prepare(manifest)
+        _prepare(manifest, adapter)
         command = build_compose_command(manifest, args.command)
         print(" ".join(command))
         if args.dry_run:

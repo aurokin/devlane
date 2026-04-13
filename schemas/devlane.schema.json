@@ -198,9 +198,35 @@
             "type": "string",
             "minLength": 1,
             "description": "Optional HTTP path (e.g., /healthz). When set, the manifest emits a health_url for this port as http://localhost:<port><health_path>."
+          },
+          "stable_port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Optional. When declared, the stable lane asserts this port as a fixture at prepare time. When omitted, 'default' plays both roles (dev-lane hint + stable fixture). Declaring stable_port lets 'default' differ from the stable fixture if a team wants a distinct preference for dev lanes."
+          },
+          "pool_hint": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "description": "Optional [low, high] pair. When set, dev-lane pool allocation walks this subrange first before falling back to the host-wide port_range. Must sit inside the host port_range or allocation falls back immediately."
           }
         }
       }
+    },
+    "reserved": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "description": "Optional. Additional ports the catalog should never allocate for this app. Merged with the host-wide reserved list from ~/.config/devlane/config.yaml. Additive only; adapter reserved cannot un-reserve host reserved."
     },
     "outputs": {
       "type": "object",

@@ -32,6 +32,16 @@ Agents should:
 3. wire the repo's current generated files into `outputs.generated`
 4. make `inspect --json` and `prepare` produce the current local state deterministically
 
+### Monorepos
+
+If `devlane init` detects multiple app candidates, it enters **monorepo** mode. Agents should:
+
+1. run `devlane init --list` first to see the detected candidates and inferred kinds
+2. decide whether to scaffold one adapter per app (`--all`) or target a specific subtree (`--app <path>`)
+3. each resulting `devlane.yaml` is self-contained — the catalog keys off `(app, lane, service)`, so siblings in the same monorepo share a host catalog but not a manifest
+
+Devlane does not ship a monorepo workspace file. If you need to enumerate or operate across all apps, loop over the discovered `devlane.yaml` paths yourself. `devlane host status` works across all of them automatically because the catalog is already host-scoped.
+
 ## What to ask from a repo
 
 A repo adopting `devlane` only needs to answer a small number of questions:
