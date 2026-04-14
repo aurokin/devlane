@@ -1,0 +1,7 @@
+services:
+  redis:
+    image: redis:7-alpine
+    profiles: [cache]
+    ports:
+      - "${DEVLANE_PORT_REDIS}:6379"
+    command: ["redis-server", "--appendonly", "no", "--save", ""]

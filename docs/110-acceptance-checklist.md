@@ -83,6 +83,8 @@ Use this as the practical done bar.
 - `devlane up` **prints** rendered commands when `runtime.run.commands` is declared — never spawns them
 - there is no `runtime.run.mode` field; the schema rejects it
 - `devlane down` is always a no-op for bare-metal (no process tracking)
+- `devlane status` for bare-metal prints the manifest-derived summary and probes each declared port, labeling `bound` / `free`
+- `devlane status` bare-metal output never claims the process is "ours", "healthy", or "running" — only that a port is bound
 - `runtime.run.commands[].command` renders with the same template scope as `outputs.generated`
 
 ## Hybrid lifecycle
@@ -91,6 +93,8 @@ Use this as the practical done bar.
 - If compose fails in hybrid mode, the printed bare-metal commands remain visible in the terminal output above the error
 - `devlane up` exit code in hybrid mode follows compose's exit code
 - `devlane down` in hybrid mode runs `docker compose down`; bare-metal processes are the user's to stop
+- `devlane status` in hybrid mode emits both halves: compose `ps` output for the supervised services, port probes for the bare-metal ones
+- `examples/hybrid-web/` exercises the pattern end to end (compose sidecar + `runtime.run.commands` + `kind: hybrid`)
 
 ## Host catalog
 

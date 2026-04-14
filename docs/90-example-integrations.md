@@ -1,6 +1,6 @@
 # Example integrations
 
-This kit includes three example adapters at increasing realism.
+This kit includes four example adapters at increasing realism.
 
 ## 1. `examples/minimal-web/`
 
@@ -27,7 +27,18 @@ It demonstrates:
 - proxy label patterns
 - checkout-local state roots and URLs
 
-## 3. `examples/wowhead_cli/`
+## 3. `examples/hybrid-web/`
+
+This example demonstrates the **hybrid pattern**: a bare-metal web server plus a compose-managed Redis sidecar. It is the right reference when the repo's primary dev server runs natively (for debugger and hot-reload ergonomics) but depends on a supporting service that is easier to run in a container.
+
+It demonstrates:
+
+- `kind: hybrid` with both `runtime.compose_files` and `runtime.run.commands`
+- `devlane up` printing the bare-metal commands first, then running `docker compose up`
+- ports coordinated across bare-metal and compose services by the host catalog
+- a compose sidecar publishing its port on the host via `${DEVLANE_PORT_REDIS}`
+
+## 4. `examples/wowhead_cli/`
 
 This example is shaped like a CLI-heavy repo with stable wrappers and branch-local editable environments.
 
@@ -42,6 +53,7 @@ It demonstrates:
 
 - Start with `minimal-web` if you are implementing core behavior.
 - Use `agentchat` when adapting a web app with generated `.env.local` and config files.
+- Use `hybrid-web` when adapting a repo with a native dev server and a containerized sidecar (Rails + Redis, Django + Postgres, Node + anything).
 - Use `wowhead_cli` when adapting a CLI repo with stable wrappers and local activation scripts.
 
 The examples are deliberately illustrative. They should guide design and implementation, not lock you into one product's variable names.

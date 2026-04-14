@@ -161,10 +161,20 @@ worktree:
 ```
 
 - `seed` — explicit list of paths (relative to repo root) copied from the source checkout into a new worktree when `devlane worktree create` runs, **before `prepare`**. Directories are copied recursively. Missing source files warn and continue rather than failing.
-- Paths that also appear in `outputs.generated[].destination` are **skipped** with a one-line notice — `prepare` will render them, so seeding would just be shadowed.
 - The full list of copied paths is printed on completion, so the user can see exactly which credentials just moved.
 
 There is no default seed list. Devlane does not guess which files are sensitive or which secrets should follow a worktree. Each adapter declares its own list, explicitly. See principle #6 in `00-principles.md`.
+
+### Seed vs generated — two different categories of file
+
+The seed list and `outputs.generated` answer different questions. Keeping them separate in your repo is the cleanest setup:
+
+- **Generated files** are derived from the manifest (port numbers, lane-specific URLs). `prepare` renders them every time, in every worktree. Example: `.env.local` with `PORT={{ports.web}}`.
+- **Seed files** are per-developer or per-machine inputs that cannot be derived from anything devlane knows. Example: `.env.secrets` holding an OpenAI key, or `config/master.key` decrypting Rails credentials.
+
+The shapes should not be the same file. If a single `.env.local` mixes a templated port with a hand-pasted API key, split it: generate the lane-derived parts from a template, and put the secrets in a sibling file (`.env.secrets`, `.env.local.personal`, etc.) that the app reads alongside. That way `prepare` owns the generated file and `worktree.seed` owns the secret, with no collision.
+
+If a path *does* appear in both `worktree.seed` and `outputs.generated[].destination`, `worktree create` skips the seed copy with a one-line notice and lets `prepare` render it. Treat this skip as a signal that the adapter is mixing the two categories — nothing is broken, but the seed entry is dead weight.
 
 ### `outputs`
 

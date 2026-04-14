@@ -77,9 +77,35 @@ Bare-metal commands for lane "feature-x":
 
 The user copies these into terminal tabs, or pipes them through `sh` if they want to, or hands them to a process supervisor they already use. Devlane does not run them.
 
+### That is a small amount of help, on purpose
+
+Yes — for a bare-metal lane, `devlane up` is little more than a nicely rendered `printf`. That is the full deal:
+
+- `prepare` gave you coordinated, sticky ports and generated the config the app reads.
+- `up` hands you the exact commands to paste, with those ports already substituted.
+- `down` leaves your processes alone.
+
+The supervisor-sized gap between "print" and "spawn" is where `tmux`, `overmind`, `foreman`, `systemd --user`, `pm2`, or your own shell loop belong. These tools collect logs, restart on crash, and know which PID is yours — all work devlane deliberately does not reimplement (principle #1 in `00-principles.md`). Pipe `devlane up` into the supervisor you already use; devlane stays honest about what it owns.
+
 ### `devlane down` for bare-metal
 
 Always a no-op. Devlane does not track or stop bare-metal processes. The catalog entry and manifest persist across stop/start cycles exactly as they do for containerized lanes.
+
+### `devlane status` for bare-metal
+
+Prints the manifest-derived summary and, for every declared service, **probes the allocated port** to answer the only process-adjacent question devlane can honestly answer: is anything bound there?
+
+```
+$ devlane status
+Lane: feature-x (dev)
+Services:
+  web    port 3100  bound
+  api    port 4000  free
+```
+
+`bound` means the kernel has a listener on the port devlane reserved for that service. It does **not** mean the process is ours, healthy, or the right version — devlane owns state, not processes. Compose-backed services can answer those richer questions; bare-metal cannot. This asymmetry is by design: probing is the honest floor.
+
+For stricter bindability checks the `--probe` machinery is still available via `devlane port <service> --probe`. For health, hit `manifest.ports.<service>.healthUrl` yourself.
 
 ### Template scope
 

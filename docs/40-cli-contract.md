@@ -22,9 +22,11 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
   - **Bare-metal**: no-op. Devlane does not track bare-metal processes, even if `up` printed commands for them.
   - **Hybrid**: runs `docker compose down`. Bare-metal processes are the user's to stop.
 - `status` — print lane state without mutating anything. `status` is always safe because it only reads:
-  - **Containerized**: runs `docker compose ps`.
-  - **Bare-metal**: prints the manifest-derived summary.
-  - **Hybrid**: both.
+  - **Containerized**: runs `docker compose ps`. Compose is the authoritative source for which containers are up, their health, and their state.
+  - **Bare-metal**: prints the manifest-derived summary and, for every declared service, **probes the allocated port** to report whether something is bound (`bound` / `free`). Devlane cannot say *which* process is bound — it only owns state, not processes — so it does not claim `running` or `ours`. A `bound` port is just evidence that *a* process is listening on the port devlane reserved for that service.
+  - **Hybrid**: both. The compose side reports container state; the bare-metal side reports port-bound evidence for the declared services.
+
+The bare-metal asymmetry is deliberate: with compose, the supervisor can answer "is my service up?" definitively; without a supervisor, the best devlane can do is ask the kernel "is this port bound?" and say so plainly.
 - `doctor` — validate obvious prerequisites.
 
 ## Host catalog commands

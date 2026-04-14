@@ -35,6 +35,15 @@ It does not mean:
 
 For "is the port actually bindable": `devlane port <svc> --probe`. For "is the lane running": `devlane status`. For health: hit `manifest.ports.<svc>.healthUrl` yourself.
 
+## What `devlane status` tells you (and how bare-metal differs from compose)
+
+`status` is read-only. What it can tell you depends on whether the lane has a supervisor:
+
+- **Containerized and hybrid compose side**: runs `docker compose ps`. You get container state, health, uptime, ports — the supervisor knows.
+- **Bare-metal and hybrid bare-metal side**: probes every declared port and prints `bound` or `free`. Nothing more. Devlane does not know which process holds a bound port or whether it is your app.
+
+A `bound` bare-metal service is not proof the app is running — only that *something* is listening on the port devlane reserved. An orphan process from a previous run, an unrelated app, or a stale container all look identical. Treat `bound` as "probably up"; use `healthUrl` to confirm when correctness matters.
+
 ## What agents should not do first
 
 Avoid leading with:
