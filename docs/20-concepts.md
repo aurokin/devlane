@@ -43,6 +43,8 @@ A lane can run in one of two shapes:
 
 The pattern is signaled declaratively by what the adapter declares: `ports` for host-port services, `compose_files` for container lifecycle, `runtime.run` for bare-metal command guidance, `host_patterns` for hostname-based discovery. Many repos use only some of these; all are optional and independent.
 
+`kind` remains a descriptive label for the repo (`web`, `cli`, `hybrid`); it does not override the lifecycle fields. A `cli` repo may still declare `ports` or `compose_files` when it exposes a local service or uses a sidecar.
+
 ## Hostnames are optional
 
 Hostname-based discovery (`feature-x.demoapp.localhost`) is a useful enhancement but not a baseline. Most bare-metal dev is reachable as `localhost:<port>` without any DNS or proxy setup. Adapters declare `host_patterns` when the host has a Caddy, Traefik, `/etc/hosts`, or other mechanism that resolves the rendered hostnames. When omitted, discovery is port-based via `manifest.ports.<service>.port`.

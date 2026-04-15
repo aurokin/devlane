@@ -71,7 +71,7 @@ outputs:
 
 - `schema` — adapter schema version
 - `app` — stable app identifier
-- `kind` — `web`, `cli`, or `hybrid`
+- `kind` — `web`, `cli`, or `hybrid`. This is descriptive repo metadata, not the runtime switch. Runtime behavior still comes from declared fields such as `ports`, `compose_files`, and `runtime.run`.
 
 ### `lane`
 
@@ -135,6 +135,8 @@ Optional. A list of named port needs.
 The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move unless `devlane reassign` or `devlane host gc` is run. See `65-host-catalog.md` for the allocation model, including the fixture semantics that apply to stable lanes.
 
 If `ports` is omitted, no ports are allocated. This is appropriate for pure-CLI repos that do not bind host ports.
+
+Declaring `ports` is still valid for `kind: cli` when the repo exposes a local HTTP/gRPC/debug service or needs coordinated sidecar access. The runtime pattern is determined by the declared fields, not by `kind` alone.
 
 ### `reserved`
 

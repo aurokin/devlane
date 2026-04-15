@@ -73,6 +73,8 @@ If `devlane init` detects multiple app candidates, it enters **monorepo** mode. 
 
 Devlane does not ship a monorepo workspace file. If you need to enumerate or operate across all apps, loop over the discovered `devlane.yaml` paths yourself. `devlane host status` works across all of them automatically because the catalog is already host-scoped.
 
+If `init` finds multiple candidates and you do not have a TTY, do **not** rely on `--yes` to pick for you. Use `--all` to scaffold every candidate or `--app <path>` to choose one subtree. Otherwise `init` fails after printing the candidate list.
+
 ## What to ask from a repo
 
 A repo adopting `devlane` only needs to answer a small number of questions:
@@ -111,6 +113,8 @@ Reassign should be the last step, not the first. Most "conflicts" are staleness,
 
 Before calling `reassign`, check whether the process holding the port is actually yours. Orphan processes from a previous run look identical to external collisions from devlane's perspective.
 
+When using `reassign --lane <name>`, prefer staying in the intended repo or passing `--config` / `--cwd` for it so the app context stays explicit. Lane names are not globally unique; a repo-less catalog lookup should only succeed when exactly one matching `(lane, service)` entry exists across the host.
+
 ### When `prepare` fails with a collision error
 
 If `prepare` itself fails with a stable-fixture collision (see `65-host-catalog.md`), the error message prints the exact resolution. Agents should parse the message and follow its instructions:
@@ -123,13 +127,13 @@ If `prepare` itself fails with a stable-fixture collision (see `65-host-catalog.
 
 When Phase 3 lands, agents should prefer `devlane worktree create <lane>` over `git worktree add` directly. The devlane command does three things in one:
 
-1. `git worktree add` at the conventional path
+1. `git worktree add` at the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`, creating a new branch named `<lane>` from the current `HEAD`
 2. copy every path listed in the adapter's `worktree.seed` from the source checkout (credentials, `.env.local`, secret keys) — skipping any that are also in `outputs.generated`, because `prepare` will render those
 3. run `prepare` in the new checkout so the catalog registers the new dev lane's ports
 
 After `worktree create` returns, the new worktree has everything it needs to run: its own lane identity, its own allocated ports, its own generated files, and whatever seed files the adapter declared. No manual copying.
 
-`devlane worktree remove <lane>` is the inverse: `git worktree remove` plus a scoped `host gc` so the catalog does not accumulate stale entries.
+`devlane worktree remove <lane>` is the inverse: `git worktree remove` plus scoped catalog cleanup so the catalog does not accumulate stale entries. "Scoped" means deleting only the removed worktree's `(app, lane, repoPath)` allocations, not doing a host-wide sweep.
 
 Agents should **not**:
 

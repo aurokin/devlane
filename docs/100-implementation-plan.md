@@ -33,10 +33,10 @@ Deliverables:
 - concurrent-safe catalog writes: `fcntl.flock` on a sidecar lockfile + atomic `os.rename`, 30-second acquire timeout, POSIX-first (Windows deferred)
 - adapter `ports` field
 - manifest `ports` section with `allocated` flag, top-level `ready` flag, and `DEVLANE_PORT_*` env vars
-- sticky allocation with live probing during `prepare`; stable lanes treat declared `default` as a fixture and fail loudly on collision (three scenarios documented in `65-host-catalog.md`)
+- sticky allocation with live probing during `prepare`; stable lanes treat `stable_port` as the fixture when declared, otherwise `default`, and fail loudly on collision (three scenarios documented in `65-host-catalog.md`)
 - TCP probing on both `0.0.0.0` and `::` (IPv6 `V6ONLY=1`)
 - `devlane port <service>` with `--verbose` and `--probe`
-- `devlane reassign <service>` — idempotent, scoped, supports `--lane <name>` to operate by lane
+- `devlane reassign <service>` — idempotent, scoped, supports `--lane <name>` for same-app lane targeting; when repo context is unavailable and lookup falls back to the catalog, ambiguity across apps fails loudly
 - `devlane host status`, `host doctor`, `host gc` (staleness = missing repoPath OR missing service declaration)
 - catalog schema at `schemas/catalog.schema.json`
 - agent playbook section on conflict handling
@@ -47,8 +47,8 @@ Goal: let the shared tool create and retire lanes, not only operate inside them.
 
 Deliverables:
 
-- `devlane worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. Registers the dev lane's ports in the catalog before the user starts anything.
-- `devlane worktree remove <lane>` — `git worktree remove` + scoped `host gc` so the catalog self-cleans.
+- `devlane worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. Uses the sibling path convention `<repo-root-parent>/<repo-root-base>-<lane-slug>`, creates a new branch named `<lane>` from the current `HEAD`, and fails rather than guessing if that branch or path already exists. Registers the dev lane's ports in the catalog before the user starts anything.
+- `devlane worktree remove <lane>` — `git worktree remove` + scoped catalog cleanup so the catalog self-cleans. Scoped cleanup removes only the removed worktree's `(app, lane, repoPath)` allocations.
 - adapter `worktree.seed` — explicit list of paths (files and directories) copied from the source checkout into a new worktree before `prepare`. No defaults. Paths that also appear in `outputs.generated` are skipped with a notice. Missing source files warn and continue. The full list of copied paths is printed on completion for security clarity.
 
 Explicitly **not** in this phase:
@@ -72,6 +72,8 @@ Further out, still worth capturing:
 - Windows support for catalog concurrency (Phase 2 is POSIX-first via `fcntl.flock`; Windows needs `msvcrt.locking` equivalent)
 - `devlane up --wait` with health-probe integration (Phase 1 emits `healthUrl` in the manifest but does not probe it)
 - Smarter `init` auto-detection that senses proxy signals (Traefik labels, Caddyfile, etc.) — deferred; the current rule is "adapter declares `host_patterns` explicitly or it's absent"
+
+Phase 1 `init` should stay deterministic even before that future work lands: scan descendants in lexical order, skip common non-app trees (`.git/`, `.devlane/`, `.direnv/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `target/`, `tmp/`), do not follow symlinks, and fail rather than guessing when monorepo mode meets a non-interactive caller without `--all` or `--app`.
 
 ## Design pressure to resist
 

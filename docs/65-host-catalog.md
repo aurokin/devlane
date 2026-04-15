@@ -206,12 +206,31 @@ Probing is TCP-only. UDP services are not yet supported by the catalog. Apps tha
 1. Look up the current allocation for `(app, lane, service)`. If invoked without flags, `lane` is derived from the cwd's adapter and git state. `--lane <name>` overrides with an explicit lane.
 2. Probe the current port.
 3. If bindable, no-op — return the current port.
-4. If not bindable, find a new port using the same rules as initial allocation. Stable lanes fail if their adapter's declared default is unavailable (fixture semantics). Dev lanes walk the pool.
+4. If not bindable, find a new port using the same rules as initial allocation. Stable lanes fail if their fixture (`stable_port` when declared, otherwise `default`) is unavailable. Dev lanes walk the pool.
 5. Update the catalog and re-run the write half of `prepare` (manifest, compose env, rendered templates).
 
 Calling `reassign` when nothing is wrong is safe. It is idempotent.
 
 Only the requested service is moved. Sibling services and other lanes are untouched.
+
+### `--lane <name>` lookup rules
+
+Without `--lane`, `reassign` operates on the current repo + current lane derived from the adapter and git state.
+
+With `--lane <name>`, the command keeps the current app context and only swaps the lane:
+
+1. Resolve the target app from the current repo, or from an explicit `--config` / `--cwd`.
+2. Look up the matching `(app, lane=<name>, service=<service>)` allocation.
+3. If it exists, operate there. If it does not, fail clearly.
+
+If repo context is unavailable and an implementation chooses to fall back to the catalog directly, it must still respect the true key shape:
+
+1. Find catalog entries matching `(lane=<name>, service=<service>)`.
+2. If exactly one entry matches, load the adapter at that entry's `repoPath` and continue there.
+3. If no entries match, fail clearly.
+4. If multiple entries match across different apps, fail on ambiguity and print the matching `(app, repoPath)` pairs.
+
+This keeps `--lane` usable without `cd` while still respecting the fact that the true key is `(app, lane, service)`, not lane name alone.
 
 ## Garbage collection
 
@@ -229,6 +248,10 @@ Optional flags:
 - `--yes` — skip the confirmation prompt
 
 By default `gc` prints what it would remove and prompts for confirmation.
+
+### Scoped cleanup for worktree removal
+
+`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. After the worktree is removed, devlane deletes only allocations whose `(app, lane, repoPath)` match that removed worktree. It does not scan unrelated repos, and it does not remove sibling lanes for the same app.
 
 ## Why `down` does not touch the catalog
 

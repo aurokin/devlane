@@ -4,12 +4,14 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
 
 ## Lifecycle commands
 
-- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. Outcomes:
+- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. The scan walks descendants in lexical order, does not follow symlinks, and skips common non-app trees: `.git/`, `.devlane/`, `.direnv/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `target/`, and `tmp/`. Outcomes:
   - **single** — one candidate (at cwd). Scaffold in place. Today's default path.
   - **monorepo** — multiple candidates. Print the list with inferred kind per candidate, prompt the user to pick one or all, and scaffold `devlane.yaml` in each chosen subtree. `--all` skips the prompt.
   - **ambiguous** — no confident signal. Scaffold a CLI template and print a notice pointing at `--template baremetal-web` or `--template containerized-web`.
 
   Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--app <path>` targets a specific subtree and skips scanning, `--list` prints detected candidates without writing anything, `--yes` / `--all` skip interactive prompts (also skipped when stdin is not a TTY), `--force` overwrites an existing file.
+
+  If `init` finds multiple candidates and prompting is unavailable (non-TTY stdin, `--yes`, or an agent context), the command does **not** guess. `--all` means scaffold every candidate; `--app <path>` means scaffold just that subtree; otherwise `init` fails after printing the candidate list and tells the user to rerun with `--all` or `--app`.
 - `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run (emits `allocated: false` for unallocated ports and `ready: false` at the top level).
 - `prepare` — write the manifest, render generated files, and allocate ports via the host catalog. If no `devlane.yaml` is found, points the user at `devlane init`. If the compose pattern is in use, also writes `.devlane/compose.env`.
 - `up` — start the lane. The semantics follow the supervised-substrate rule:
@@ -32,7 +34,9 @@ The bare-metal asymmetry is deliberate: with compose, the supervisor can answer 
 ## Host catalog commands
 
 - `port <service>` — print the currently assigned port for a service. Plain number by default; `--verbose` for metadata; `--probe` to verify bindability via exit code.
-- `reassign <service>` — idempotent repair. Probes the current port and only moves it if actually blocked, otherwise no-op. `--lane <name>` operates on a specific lane by name without requiring a cd (the catalog has enough to find the right repo).
+- `reassign <service>` — idempotent repair. Probes the current port and only moves it if actually blocked, otherwise no-op. `--lane <name>` changes the lane target while preserving app context:
+  - when run inside a repo (or with `--config` / `--cwd` pointing at one), operate on `<service>` for that app and the requested lane
+  - when repo context is unavailable and the implementation falls back to the host catalog, succeed only if exactly one catalog entry matches `(lane, service)`; zero matches fail clearly, and multiple matches across apps fail on ambiguity with the matching app/repo pairs printed
 - `host status` — list all allocations across the host.
 - `host doctor` — probe every allocation and report live conflicts, missing repos, or other drift.
 - `host gc` — remove catalog entries whose repos or services no longer exist. Staleness = `repoPath` missing OR adapter no longer declares the service. Supports `--app`, `--dry-run`, `--yes`.
@@ -43,8 +47,8 @@ See `65-host-catalog.md` for the catalog contract, allocation model, and fixture
 
 Worktree lifecycle is Phase 3 (see `100-implementation-plan.md`). The planned shape:
 
-- `worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. Registers the dev lane's ports in the catalog before the user starts anything. Seed copy reads the adapter's `worktree.seed` list.
-- `worktree remove <lane>` — `git worktree remove` + scoped `host gc` so the catalog self-cleans.
+- `worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. The target path is a sibling of the source repo root: `<repo-root-parent>/<repo-root-base>-<lane-slug>`. By default the command creates a new branch named `<lane>` from the current `HEAD`; if that branch already exists, it fails rather than silently resetting or reusing a different ref. Seed copy reads the adapter's `worktree.seed` list. `prepare` then registers the dev lane's ports in the catalog before the user starts anything.
+- `worktree remove <lane>` — `git worktree remove` + scoped catalog cleanup so the catalog self-cleans. "Scoped" means removing only allocations whose `(app, lane, repoPath)` match the worktree being removed; it is not a host-wide sweep.
 
 `worktree list` is explicitly **not** planned. `git worktree list` plus `devlane host status` already tells you what's running where.
 

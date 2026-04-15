@@ -15,6 +15,7 @@ Use this as the practical done bar.
 - `devlane init` creates a valid `devlane.yaml` that passes schema validation
 - `devlane init` auto-detects runtime pattern from signals (compose files present → containerized; framework manifest without compose → bare-metal; neither → CLI)
 - `devlane init` scans cwd and up to depth 3 below for candidate app roots using `compose*.yaml`, `package.json`, `Cargo.toml`, `go.mod`, `Gemfile`, `*.csproj` as signals
+- `devlane init` scans in deterministic lexical order, does not follow symlinks, and skips common non-app trees: `.git/`, `.devlane/`, `.direnv/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `target/`, `tmp/`
 - `devlane init` in a single-candidate tree scaffolds in place (the common case)
 - `devlane init` in a multi-candidate tree enters monorepo mode: lists candidates with inferred kinds and prompts for one or all
 - `devlane init --all` in monorepo mode scaffolds an adapter in every candidate without prompting
@@ -24,6 +25,7 @@ Use this as the practical done bar.
 - `devlane init --from <path>` copies an existing adapter as the starting point
 - `devlane init` refuses to overwrite an existing `devlane.yaml` unless `--force` is passed
 - `devlane init` prompts for confirmation when stdin is a TTY; `--yes` / `--all` / a non-TTY stdin skips the prompt
+- when multiple candidates are found and prompting is unavailable, `devlane init` fails unless `--all` or `--app <path>` is provided; it never guesses
 - `devlane init` prints its detection reasoning (e.g., `Detected: containerized (found compose.yaml)`) so the user knows why it picked what it picked
 - `devlane init` scaffolds `host_patterns` as a commented-out block in all three templates; users opt in by uncommenting
 - `devlane init` scaffolds `worktree.seed` as a commented-out block with placeholder examples; users add their own paths explicitly
@@ -117,7 +119,8 @@ Use this as the practical done bar.
 - `--probe` tests both `0.0.0.0` and `::` (IPv6 with V6ONLY=1), TCP-only
 - `devlane reassign <service>` is a no-op when the current port is free
 - `devlane reassign <service>` only moves the requested service
-- `devlane reassign <service> --lane <name>` operates on a lane by name without requiring cd
+- `devlane reassign <service> --lane <name>` can target another lane of the same app when repo context is supplied by the current repo or by `--config` / `--cwd`
+- if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching `(lane, service)` entry exists; multiple matches across apps fail with a clear ambiguity error
 - `devlane host status` lists every allocation on the host
 - `devlane host gc` removes entries whose `repoPath` is missing OR whose service is no longer declared
 - `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
@@ -131,14 +134,17 @@ Use this as the practical done bar.
 
 ## Worktree lifecycle (Phase 3)
 
-- `devlane worktree create <lane>` runs `git worktree add` at the conventional path
+- `devlane worktree create <lane>` runs `git worktree add` at the sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`
+- `worktree create` creates a new branch named `<lane>` from the source checkout's current `HEAD`
+- `worktree create` fails rather than guessing when the target path already exists or the target branch already exists
 - `worktree create` copies every path listed in `worktree.seed` from the source checkout into the new worktree, **before** `prepare` runs
 - `worktree.seed` directories are copied recursively
 - `worktree.seed` entries that are missing in the source checkout warn and continue — they do not fail the command
 - `worktree.seed` entries that also appear in `outputs.generated[].destination` are skipped with a one-line notice (prepare will render them)
 - `worktree create` prints the full list of copied paths on completion for security clarity
 - `worktree create` runs `prepare` in the new checkout so the catalog registers the new dev lane's ports before the user starts anything
-- `devlane worktree remove <lane>` runs `git worktree remove` and then a scoped `host gc` so the catalog does not accumulate stale entries
+- `devlane worktree remove <lane>` runs `git worktree remove` and then scoped catalog cleanup so the catalog does not accumulate stale entries
+- scoped cleanup removes only allocations matching the removed worktree's `(app, lane, repoPath)`
 - there is no `devlane worktree list` command
 - devlane does not touch per-worktree git config
 - devlane does not ship any default seed list; every path is explicit in the adapter
@@ -146,7 +152,7 @@ Use this as the practical done bar.
 ## Validation strictness
 
 - schema-load errors fail before `prepare` logic runs: unknown schema version, invalid `kind`, duplicate `ports[].name`, `host_patterns.dev` missing `{lane}`, `host_patterns.stable == host_patterns.dev`, missing `outputs.manifest_path`, presence of a `runtime.run.mode` field (removed; schema rejects it)
-- `prepare`-time errors fail loudly: `kind: cli` with non-empty `ports`, missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable fixture in `reserved`, pool exhaustion
+- `prepare`-time errors fail loudly: missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable fixture in `reserved`, pool exhaustion
 - warnings do not block: adapter `default` changed since last allocation, `default` outside `port_range` (noted in `inspect --verbose`), `kind: web` with no `ports` and no `compose_files`
 
 ## Agent experience
