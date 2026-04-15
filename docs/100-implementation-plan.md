@@ -12,7 +12,7 @@ Deliverables:
 - stable manifest schema (ports-as-objects with `allocated` flag and optional `healthUrl`, plus the top-level `ready` flag)
 - working `inspect` that always recomputes from adapter + catalog, never reads manifest.json from disk
 - working `prepare` with strict validation (Groups A/B from `110-acceptance-checklist.md`) and sidecar-hash detection for hand-edited generated files
-- explicit failure semantics for `prepare` and the write half of `reassign`: validate everything that can fail before mutating durable state, and define rollback / recovery behavior for any repo-local write that still fails after catalog work begins. `manifest.ready` must not imply a successful local write when outputs are stale or missing.
+- explicit failure semantics for `prepare` and the write half of `reassign`: validate everything that can fail before catalog work begins, compute catalog mutations under lock, perform repo-local writes against the unpublished in-memory result, and publish `catalog.json` only after those writes succeed. On failure, release the lock without publishing the mutation. `manifest.ready` must not imply a successful local write when outputs are stale or missing.
 - `devlane init` for zero-friction adoption (deterministic lexical scan from cwd to depth 3; skip common non-app trees; no symlink traversal; `--template`, `--from`, `--app`, `--list`, `--yes`, `--all`, `--force`; fail rather than guess in non-interactive monorepo mode)
 - lane-aware `up`, `down`, `status`, and `doctor`:
   - **Containerized** (`compose_files` declared): `up` runs `docker compose up`, `down` runs `docker compose down`, `status` runs `docker compose ps`. The compose substrate is the supervisor.
@@ -41,7 +41,7 @@ Deliverables:
 - `devlane port <service>` with `--verbose` and `--probe`
 - `devlane reassign <service>` — idempotent, scoped, supports `--lane <name>` for same-app lane targeting; when repo context is unavailable and lookup falls back to the catalog, ambiguity across apps fails loudly
 - `devlane host status`, `host doctor`, `host gc` (staleness = missing repoPath OR missing service declaration)
-- repo-identity drift handling in host audits and cleanup: define how `host doctor` / `host gc` detect entries whose `repoPath` still exists but no longer represents the same `(app, lane)` identity, so stale allocations do not survive indefinitely after branch or repo-identity changes
+- repo-identity drift handling in host audits and cleanup: treat a row as drifted when the adapter currently loaded from `repoPath` no longer derives the same `(app, lane)` pair the catalog row claims, so stale allocations do not survive indefinitely after branch or repo-identity changes
 - catalog schema at `schemas/catalog.schema.json`
 - agent playbook section on conflict handling
 

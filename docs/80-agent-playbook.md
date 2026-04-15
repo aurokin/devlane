@@ -13,7 +13,7 @@ When asked to work inside a repo that uses `devlane`, agents should prefer this 
 
 That order keeps discovery explicit and reproducible.
 
-`inspect --json` always works — it recomputes the manifest from the adapter plus the current catalog and never reads stale state off disk. Before `prepare` has ever run, `manifest.ready` is `false` and ports appear with `allocated: false` and the adapter's declared defaults as the port numbers. That is the signal that `prepare` has not been run yet.
+`inspect --json` always works — it recomputes the manifest from the adapter plus the current catalog and never reads stale state off disk. Before `prepare` has ever run, `manifest.ready` is `false` and ports appear with `allocated: false` plus a provisional `port` computed against the live catalog. That is the signal that `prepare` has not been run yet. Treat that number as "what `prepare` would pick right now," not as a committed reservation.
 
 ## Always read `inspect --json`, not the file on disk
 

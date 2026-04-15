@@ -79,6 +79,20 @@ The lock is OS-managed. If a process is killed mid-write, the lock releases auto
 
 POSIX-first. Windows support is deferred to a later phase.
 
+### Unpublished mutations during `prepare` / `reassign`
+
+`prepare` and the write half of `reassign` compute catalog mutations under the lock, but they do **not** publish an updated `catalog.json` before repo-local writes succeed.
+
+The sequence is:
+
+1. preflight repo-local work that can fail cheaply (template existence, destination containment, compose-file presence, schema sanity)
+2. acquire the catalog lock and compute the allocation mutation
+3. perform repo-local writes against that in-memory result (manifest, compose env, generated files)
+4. publish the new `catalog.json` only after those writes succeed
+5. on failure, release the lock without publishing the mutation
+
+This keeps unlocked readers from observing a misleadingly "ready" catalog state while repo-local outputs are still stale or missing.
+
 ## Allocation algorithm
 
 When `prepare` runs, for each port declared in the adapter:
@@ -97,6 +111,8 @@ When `prepare` runs, for each port declared in the adapter:
 5. **Refresh `lastPrepared`** on the entry.
 
 `prepare` only probes during allocation. It does not re-probe existing entries.
+
+`inspect --json` uses the same allocation rules to compute **provisional** values for unallocated ports, but it does not take the lock and it does not reserve anything. It answers "what would `prepare` pick if it ran right now?" That answer can still change before `prepare` if another writer publishes first.
 
 ### Why `default` can sit outside `port_range`
 
@@ -236,10 +252,11 @@ This keeps `--lane` usable without `cd` while still respecting the fact that the
 
 Catalog entries are never removed by `up`, `down`, or `prepare`. `devlane host gc` is the host-wide stale-entry cleanup command. `devlane worktree remove <lane>` uses a separate targeted deletion path for one removed worktree.
 
-Staleness heuristics — an allocation is stale if either:
+Staleness heuristics — an allocation is stale or drifted if any of the following are true:
 
 1. `repoPath` no longer exists on disk, or
-2. the adapter at `repoPath` loads and no longer declares a service matching the allocation's `service` field.
+2. the adapter at `repoPath` loads and no longer declares a service matching the allocation's `service` field, or
+3. the adapter currently loaded from `repoPath` no longer derives the same `(app, lane)` pair the catalog row claims.
 
 Optional flags:
 
@@ -248,6 +265,8 @@ Optional flags:
 - `--yes` — skip the confirmation prompt
 
 By default `gc` prints what it would remove and prompts for confirmation.
+
+The third rule is the repo-identity drift check. It is intentionally based on the current adapter and lane derivation at `repoPath`, not on a second persisted identity token in the catalog. If today's checkout at `repoPath` now identifies itself as a different app or lane, the old row is drifted and should not survive indefinitely.
 
 ### Scoped cleanup for worktree removal
 

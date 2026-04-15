@@ -136,7 +136,7 @@ Before the first `prepare`, no catalog entry exists for `(app, lane, service)`. 
 }
 ```
 
-`port` is the adapter's declared default (or `stable_port` on a stable lane, when declared). `ready: false` and `allocated: false` both tell the consumer "this is what devlane would allocate; run `prepare` to make it real." Agents should check `ready` (or at minimum the per-port `allocated`) before relying on a port being bindable.
+For a stable lane, `port` is the fixture (`stable_port` when declared, otherwise `default`). For a dev lane, `port` is a **provisional candidate** computed against the live catalog using the same allocator `prepare` would use right now: try `default`, then `pool_hint` when valid, then the host `port_range`, all while respecting held and reserved ports. `ready: false` and `allocated: false` tell the consumer "this is the current best candidate; run `prepare` to commit it." Because the value is computed against the live catalog rather than reserved ahead of time, it may still change before `prepare` if another writer publishes first. Agents should check `ready` (or at minimum the per-port `allocated`) before relying on a port being bindable.
 
 ## Paths
 

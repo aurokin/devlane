@@ -12,7 +12,7 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
   Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--app <path>` targets a specific subtree and skips scanning, `--list` prints detected candidates without writing anything, `--yes` / `--all` skip interactive prompts (also skipped when stdin is not a TTY), `--force` overwrites an existing file.
 
   If `init` finds multiple candidates and prompting is unavailable (non-TTY stdin, `--yes`, or an agent context), the command does **not** guess. `--all` means scaffold every candidate; `--app <path>` means scaffold just that subtree; otherwise `init` fails after printing the candidate list and tells the user to rerun with `--all` or `--app`.
-- `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run (emits `allocated: false` for unallocated ports and `ready: false` at the top level).
+- `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run: for unallocated ports it emits `allocated: false`, `ready: false`, and a **provisional** `port` computed against the live catalog using the current allocation rules. That provisional value is "what `prepare` would pick if it ran right now," not a committed allocation, so it may still change if another writer publishes first.
 - `prepare` — write the manifest, render generated files, and allocate ports via the host catalog. If no `devlane.yaml` is found, points the user at `devlane init`. If the compose pattern is in use, also writes `.devlane/compose.env`.
 - `up` — start the lane. The semantics follow the supervised-substrate rule:
   - **Containerized** (adapter declares `compose_files`): runs lane-aware `docker compose up`. Compose is the supervisor; devlane is a thin shell over it.
@@ -38,8 +38,8 @@ The bare-metal asymmetry is deliberate: with compose, the supervisor can answer 
   - when run inside a repo (or with `--config` / `--cwd` pointing at one), operate on `<service>` for that app and the requested lane
   - when repo context is unavailable and the implementation falls back to the host catalog, succeed only if exactly one catalog entry matches `(lane, service)`; zero matches fail clearly, and multiple matches across apps fail on ambiguity with the matching app/repo pairs printed
 - `host status` — list all allocations across the host.
-- `host doctor` — read-only host-wide audit. Probes every allocation and reports live conflicts, missing repos, or other drift. It exits non-zero when any allocation is stale or conflicting. It does not delete anything; cleanup remains explicit via `host gc`.
-- `host gc` — remove catalog entries whose repos or services no longer exist. Staleness = `repoPath` missing OR adapter no longer declares the service. Supports `--app`, `--dry-run`, `--yes`.
+- `host doctor` — read-only host-wide audit. Probes every allocation and reports live conflicts, missing repos, missing service declarations, or repo-identity drift. Identity drift means the adapter currently loaded from `repoPath` no longer derives the same `(app, lane)` pair the catalog row claims. It exits non-zero when any allocation is stale, drifted, or conflicting. It does not delete anything; cleanup remains explicit via `host gc`.
+- `host gc` — remove catalog entries whose repos or services no longer exist, or whose current `(app, lane)` at `repoPath` no longer matches the catalog row. Supports `--app`, `--dry-run`, `--yes`.
 
 See `65-host-catalog.md` for the catalog contract, allocation model, and fixture semantics for stable lanes.
 

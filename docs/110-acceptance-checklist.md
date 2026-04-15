@@ -40,6 +40,8 @@ Use this as the practical done bar.
 - `prepare`/`inspect`/`up` walk up from cwd to find the nearest `devlane.yaml`
 - `inspect --json` always recomputes from adapter + catalog; never reads `.devlane/manifest.json`
 - `inspect --json` works before `prepare` has ever run; emits `ready: false` and `allocated: false` for pre-prepare ports
+- for pre-prepare dev lanes, `inspect --json` computes provisional `ports.<name>.port` values against the live catalog using the current allocator; these values are not reserved and may still change before `prepare`
+- for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port`
 - `inspect --json` emits deterministic JSON
 - lane names are stable and slugified
 - stable vs dev mode is explicit or reproducible
@@ -68,7 +70,7 @@ Use this as the practical done bar.
 - `prepare` tracks a sidecar hash per generated file under `.devlane/`
 - when an on-disk generated file has been hand-edited, `prepare` prints a one-line warning and writes anyway
 - first `prepare` with no sidecar hash quietly overwrites existing files with a one-line notice
-- `prepare` validates all repo-local writes that can fail before committing catalog mutations, or explicitly rolls those mutations back on failure
+- `prepare` validates all repo-local writes that can fail before catalog work begins, computes the catalog mutation under lock, performs repo-local writes against the unpublished result, and publishes the catalog only after those writes succeed
 - a failed `prepare` or `reassign` write phase does not leave `inspect --json` reporting a misleadingly ready lane with stale or missing generated outputs
 
 ## Compose lifecycle
@@ -136,11 +138,11 @@ Use this as the practical done bar.
 - if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching `(lane, service)` entry exists; multiple matches across apps fail with a clear ambiguity error
 - `devlane host status` lists every allocation on the host
 - `devlane host doctor` is read-only and does not mutate the catalog
-- `devlane host doctor` probes every allocation and reports bindability conflicts, missing repos, or adapter drift
+- `devlane host doctor` probes every allocation and reports bindability conflicts, missing repos, missing service declarations, or repo-identity drift
 - `devlane host doctor` exits non-zero when any allocation is stale or conflicting
 - `devlane host doctor` does not delete stale entries; cleanup remains explicit via `host gc`
-- `devlane host gc` removes entries whose `repoPath` is missing OR whose service is no longer declared
-- `devlane host doctor` and `host gc` also detect repo-identity drift when a `repoPath` still exists but no longer represents the same allocation identity the catalog entry claims
+- `devlane host gc` removes entries whose `repoPath` is missing, whose service is no longer declared, OR whose current `(app, lane)` at `repoPath` no longer matches the catalog row
+- `devlane host doctor` and `host gc` define repo-identity drift by loading the adapter at `repoPath` and re-deriving the current `(app, lane)` for that checkout
 - `devlane host gc` supports `--app`, `--dry-run`, and `--yes`
 - `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
 - reserved ports in `config.yaml` are never allocated, even when they match a dev-lane adapter's declared `default`

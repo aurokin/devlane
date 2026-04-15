@@ -145,7 +145,7 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 65535,
-            "description": "Allocated port if allocated=true; adapter default if allocated=false (pre-prepare projection)."
+            "description": "Allocated port if allocated=true. When allocated=false, this is a provisional value: stable lanes emit their fixture (stable_port when declared, otherwise default); dev lanes emit the current best candidate computed against the live catalog using the allocator rules. Provisional values are not reserved and may still change before prepare publishes an allocation."
           },
           "allocated": {
             "type": "boolean",
