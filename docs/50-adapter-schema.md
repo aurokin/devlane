@@ -6,7 +6,7 @@ The adapter should stay small and declarative. See principle #2 in `00-principle
 
 ## Scaffolding a new adapter
 
-`devlane init` writes a starter `devlane.yaml` based on what it finds in the repo — compose files present (containerized), framework manifest without compose (bare-metal), or neither (CLI). Use `--template <name>` to force a shape, or `--from <path>` to copy an existing example. Most adoptions start here and then customize the result.
+`devlane init` writes a starter `devlane.yaml` based on what it finds in the repo — compose files present (containerized), framework manifest without compose (bare-metal), or neither (CLI). Hybrid is available as an explicit starter template rather than an inferred detection result: use `--template hybrid-web` when the repo mixes bare-metal and compose on purpose. `--from <path>` copies an existing example literally rather than migrating it: relative paths and repo-specific identifiers are preserved as written, then reviewed by the user in the target repo. Most adoptions start here and then customize the result.
 
 ## Example
 
@@ -67,6 +67,19 @@ outputs:
 
 ## Fields
 
+## `init --from` review rule
+
+When you scaffold from another adapter with `devlane init --from <path>`, devlane copies the YAML as-is. It does not attempt to rewrite:
+
+- `app`
+- `lane.host_patterns`
+- `runtime.compose_files`
+- `outputs.generated[].template`
+- `outputs.*_path`
+- `worktree.seed`
+
+That keeps the command deterministic and repo-agnostic. It also means imported adapters may contain paths or identifiers that do not make sense in the target repo. After copying, review those fields explicitly before treating the new adapter as adopted.
+
 ### Top-level
 
 - `schema` — adapter schema version
@@ -96,7 +109,7 @@ When `host_patterns` is omitted:
 - `compose_files` — Compose files relative to repo root
 - `default_profiles` — profiles enabled by default
 - `optional_profiles` — known optional profiles
-- `env` — extra env values that should be available to templates and Compose
+- `env` — extra env values that should be projected into Compose and exposed to templates / bare-metal command rendering as `env.<KEY>`
 - `run` — optional bare-metal command declarations (see below)
 
 All fields are optional. Pure bare-metal repos that do not use Docker Compose can omit `compose_files` and the profile fields; the default runtime pattern is bare-metal (see `75-baremetal-workflow.md`). Declaring `compose_files` is what opts an adapter into the containerized pattern (see `70-container-workflow.md`). Declaring both gets the hybrid pattern.
@@ -120,7 +133,7 @@ runtime:
 - In a hybrid adapter (both `compose_files` and `runtime.run.commands`), `up` prints these commands first, then runs `docker compose up`. If compose fails, the bare-metal plan is still visible.
 - `devlane down` is always a no-op for bare-metal. Users stop their own processes.
 
-Commands accept `{{...}}` templating. The scope is the same as `outputs.generated` templates: `ports.<name>`, `lane.*`, `app`, `runtime.env.*`. New variables are added to both scopes together.
+Commands accept `{{...}}` templating. The scope is the same as `outputs.generated` templates: top-level manifest groups (`app`, `kind`, `ready`, `lane`, `paths`, `network`, `compose`, `outputs`), flattened `ports.<name>`, and `env.<KEY>`. New variables are added to both scopes together.
 
 ### `ports`
 
@@ -163,6 +176,9 @@ worktree:
 ```
 
 - `seed` — explicit list of paths (relative to repo root) copied from the source checkout into a new worktree when `devlane worktree create` runs, **before `prepare`**. Directories are copied recursively. Missing source files warn and continue rather than failing.
+- symlinks are recreated as symlinks. Devlane does not dereference them or rewrite their targets.
+- existing destination paths in the new worktree are overwritten for explicit seed entries, except when the path is also a generated output and therefore skipped.
+- regular-file mode bits are preserved best-effort; ownership is not preserved.
 - The full list of copied paths is printed on completion, so the user can see exactly which credentials just moved.
 
 There is no default seed list. Devlane does not guess which files are sensitive or which secrets should follow a worktree. Each adapter declares its own list, explicitly. See principle #6 in `00-principles.md`.

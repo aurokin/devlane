@@ -103,13 +103,15 @@ Services:
   api    port 4000  free
 ```
 
-`bound` means the kernel has a listener on the port devlane reserved for that service. It does **not** mean the process is ours, healthy, or the right version — devlane owns state, not processes. Compose-backed services can answer those richer questions; bare-metal cannot. This asymmetry is by design: probing is the honest floor.
+`bound` means the kernel has a listener on the port devlane reserved for that service. It does **not** mean the process is ours, healthy, or the right version — devlane owns state, not processes. Compose-backed services can answer those richer questions inside `status`; host-wide probe surfaces such as `host doctor` stay conservative and do not infer ownership from a bound port alone. This asymmetry is by design: probing is the honest floor.
+
+Before the first `prepare`, declared services are still `allocated: false`. In that state, `status` reports them as `unallocated` and may show the current provisional candidate, but it does **not** probe the provisional port. Provisional values from `inspect --json` answer "what would `prepare` pick right now?", not "what is reserved for this lane already?"
 
 For stricter bindability checks the `--probe` machinery is still available via `devlane port <service> --probe`. For health, hit `manifest.ports.<service>.healthUrl` yourself.
 
 ### Template scope
 
-`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates: `ports.<name>`, `lane.*`, `app`, `runtime.env.*`. New variables are added to both scopes together.
+`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates: top-level manifest groups, flattened `ports.<name>`, and `env.<KEY>`. New variables are added to both scopes together.
 
 ## What `prepare` produces
 

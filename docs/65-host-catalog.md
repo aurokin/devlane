@@ -38,6 +38,12 @@ reserved:
 
 The file is optional. Defaults are baked in.
 
+When `config.yaml` is absent, the defaults are:
+
+- `port_range.start = 3000`
+- `port_range.end = 9999`
+- `reserved = [22, 80, 443, 5432, 6379]`
+
 ## `catalog.json`
 
 ```json
@@ -46,17 +52,21 @@ The file is optional. Defaults are baked in.
   "allocations": [
     {
       "app": "agentchat",
-      "lane": "feature-x",
+      "repoPath": "/home/auro/code/agentchat-feature-x",
       "service": "web",
       "port": 3100,
-      "repoPath": "/home/auro/code/agentchat",
+      "mode": "dev",
+      "lane": "feature-x",
+      "branch": "feature-x",
       "lastPrepared": "2026-04-11T14:30:00Z"
     }
   ]
 }
 ```
 
-Each allocation answers "which port does this `(app, lane, service)` tuple own on this host?"
+Each allocation answers "which port does this `(app, repoPath, service)` tuple own on this host?"
+
+`mode`, `lane`, and `branch` are stored as metadata for operator output and convenience selection. They are refreshed on `prepare`, but they are not part of the durable identity key for dev-lane allocations.
 
 The catalog is tool-owned. Humans and agents should not hand-edit it. Use `devlane host gc` and `devlane reassign` to change it.
 
@@ -89,15 +99,17 @@ The sequence is:
 2. acquire the catalog lock and compute the allocation mutation
 3. perform repo-local writes against that in-memory result (manifest, compose env, generated files)
 4. publish the new `catalog.json` only after those writes succeed
-5. on failure, release the lock without publishing the mutation
+5. on failure, release the lock without publishing the mutation and print which repo-local outputs were promoted before the failure, if any
 
 This keeps unlocked readers from observing a misleadingly "ready" catalog state while repo-local outputs are still stale or missing.
 
+Repo-local writes are staged to temp files in the destination directories and then promoted in deterministic order via atomic rename where possible. There is no cross-file transaction for the repo-local half: if a late promotion fails, earlier promoted files may remain updated while later ones do not. The catalog still stays unpublished, and rerunning `prepare` is the repair path.
+
 ## Allocation algorithm
 
-When `prepare` runs, for each port declared in the adapter:
+When `prepare` runs, for each port declared in the adapter, in adapter declaration order:
 
-1. **Existing allocation check.** If there is already a catalog entry for `(app, lane, service)`, keep that port. Do not re-probe. Do not move. Non-negotiable #10.
+1. **Existing allocation check.** If there is already a catalog entry for `(app, repoPath, service)`, keep that port. Do not re-probe. Do not move. Non-negotiable #10.
 2. **Merge reserved lists.** Effective `reserved` = host `config.yaml.reserved` ∪ adapter-level `reserved`. Adapter `reserved` is additive-only; it cannot un-reserve a host-reserved port.
 3. **Stable-lane allocation (fixture).** If `lane` matches the adapter's `stable_name`, the stable fixture is `stable_port` when declared on the port, otherwise `default`:
    - If the fixture is in effective `reserved`, `prepare` fails with a message telling the user to change either the adapter or `reserved`. No silent fallback.
@@ -108,7 +120,9 @@ When `prepare` runs, for each port declared in the adapter:
    - If the port declares `pool_hint: [low, high]` and that range sits inside the host `port_range`, walk `[low, high]` start-to-end next, skipping `reserved` and held ports. Otherwise skip to the next step.
    - Walk the full host `port_range` start-to-end, skipping `reserved` and held ports.
    - Take the first bindable port. If no port is free, `prepare` fails and points the user at `devlane host gc` or widening `port_range`.
-5. **Refresh `lastPrepared`** on the entry.
+5. **Refresh metadata** on the entry: `mode`, `lane`, `branch`, `lastPrepared`.
+
+During both `prepare` and provisional `inspect --json` computation, ports chosen earlier in declaration order are treated as tentatively held while later services are resolved. A single manifest must never assign the same port to two services in one checkout.
 
 `prepare` only probes during allocation. It does not re-probe existing entries.
 
@@ -141,7 +155,7 @@ This is a deliberate opt-in. The common shape is one number that means both.
 
 ## Collision handling
 
-When stable's `prepare` finds its declared default already held:
+When stable's `prepare` finds its fixture (`stable_port` when declared, otherwise `default`) already held:
 
 ### Scenario 1: Held by another app's stable
 
@@ -163,7 +177,7 @@ ERROR: port 3000 is held by dev lane "feature-x" (service "web") but is not curr
 
 To move that dev lane aside and retry, run:
 
-  devlane reassign web --lane feature-x && devlane prepare
+  devlane reassign web --lane feature-x --force && devlane prepare
 ```
 
 Soft error. Exact command printed, ready to paste. One command to resolve.
@@ -173,17 +187,25 @@ Soft error. Exact command printed, ready to paste. One command to resolve.
 ```
 ERROR: port 3000 is held by dev lane "feature-x" (service "web") and is currently bound by a running process.
 
-devlane does not stop other lanes' processes. Stop the dev lane yourself:
+devlane does not stop other lanes' processes.
+
+If that lane is compose-backed, stop it in its checkout first:
 
   (in /home/auro/code/myapp-feature-x)
   devlane down
   devlane reassign web
   devlane prepare
 
+If that lane is pure bare-metal, stop the listening process outside devlane, then run:
+
+  (in /home/auro/code/myapp-feature-x)
+  devlane reassign web
+  devlane prepare
+
 Then retry prepare here.
 ```
 
-Hard error with a recipe. Devlane does not kill foreign processes.
+Hard error with a runtime-shaped recipe. Devlane does not kill foreign processes, and bare-metal `down` remains a no-op.
 
 ## Stickiness guarantee
 
@@ -219,10 +241,10 @@ Probing is TCP-only. UDP services are not yet supported by the catalog. Apps tha
 
 `devlane reassign <service>` is the repair tool.
 
-1. Look up the current allocation for `(app, lane, service)`. If invoked without flags, `lane` is derived from the cwd's adapter and git state. `--lane <name>` overrides with an explicit lane.
+1. Look up the current allocation for `(app, repoPath, service)`. If invoked without flags, `repoPath` comes from the cwd's adapter and git state.
 2. Probe the current port.
-3. If bindable, no-op — return the current port.
-4. If not bindable, find a new port using the same rules as initial allocation. Stable lanes fail if their fixture (`stable_port` when declared, otherwise `default`) is unavailable. Dev lanes walk the pool.
+3. If bindable, no-op — return the current port, unless `--force` was passed.
+4. If not bindable, or if `--force` was passed, find a new port using the same rules as initial allocation. Stable lanes fail if their fixture (`stable_port` when declared, otherwise `default`) is unavailable. Dev lanes walk the pool.
 5. Update the catalog and re-run the write half of `prepare` (manifest, compose env, rendered templates).
 
 Calling `reassign` when nothing is wrong is safe. It is idempotent.
@@ -231,22 +253,33 @@ Only the requested service is moved. Sibling services and other lanes are untouc
 
 ### `--lane <name>` lookup rules
 
-Without `--lane`, `reassign` operates on the current repo + current lane derived from the adapter and git state.
+Without `--lane`, `reassign` operates on the current repo checkout and its `(app, repoPath, service)` row.
 
-With `--lane <name>`, the command keeps the current app context and only swaps the lane:
+With `--lane <name>`, the command keeps the current app context and uses the latest prepared lane metadata as a selector:
 
 1. Resolve the target app from the current repo, or from an explicit `--config` / `--cwd`.
-2. Look up the matching `(app, lane=<name>, service=<service>)` allocation.
-3. If it exists, operate there. If it does not, fail clearly.
+2. Find catalog rows for that app whose metadata reports `lane=<name>` and `service=<service>`.
+3. If exactly one row matches, operate on its `(app, repoPath, service)` identity.
+4. If no rows match, fail clearly.
+5. If multiple rows match, fail on ambiguity and print the matching repo paths.
 
 If repo context is unavailable and an implementation chooses to fall back to the catalog directly, it must still respect the true key shape:
 
 1. Find catalog entries matching `(lane=<name>, service=<service>)`.
 2. If exactly one entry matches, load the adapter at that entry's `repoPath` and continue there.
 3. If no entries match, fail clearly.
-4. If multiple entries match across different apps, fail on ambiguity and print the matching `(app, repoPath)` pairs.
+4. If multiple entries match for any reason, fail on ambiguity and print the matching `(app, repoPath)` pairs.
 
-This keeps `--lane` usable without `cd` while still respecting the fact that the true key is `(app, lane, service)`, not lane name alone.
+This keeps `--lane` usable without `cd` while still respecting the fact that the true key is `(app, repoPath, service)`, not lane name alone. Lane metadata is a convenience selector only, so the safe rule is simple: zero matches fail, exactly one match succeeds, and any multiple match fails.
+
+## Host doctor vs probe output
+
+`devlane host doctor` is a stale-entry and duplicate-claim audit first, not a host-wide process-owner detector.
+
+- Missing repos, missing service declarations, and app/repo mismatches are failures.
+- Multiple catalog rows claiming the same port are failures.
+- Probe results are still useful operator context, so `host doctor` reports `bound` / `free` for each allocation.
+- A singly claimed `bound` port is **not** a failure by itself. For bare-metal lanes, host-wide probing cannot distinguish "the intended app is listening" from "some unrelated process is listening." Even for compose-backed repos, `host doctor` stays conservative and avoids claiming ownership from a bare probe alone.
 
 ## Garbage collection
 
@@ -256,7 +289,7 @@ Staleness heuristics — an allocation is stale or drifted if any of the followi
 
 1. `repoPath` no longer exists on disk, or
 2. the adapter at `repoPath` loads and no longer declares a service matching the allocation's `service` field, or
-3. the adapter currently loaded from `repoPath` no longer derives the same `(app, lane)` pair the catalog row claims.
+3. the adapter currently loaded from `repoPath` no longer identifies the same `app` the catalog row claims.
 
 Optional flags:
 
@@ -266,11 +299,15 @@ Optional flags:
 
 By default `gc` prints what it would remove and prompts for confirmation.
 
-The third rule is the repo-identity drift check. It is intentionally based on the current adapter and lane derivation at `repoPath`, not on a second persisted identity token in the catalog. If today's checkout at `repoPath` now identifies itself as a different app or lane, the old row is drifted and should not survive indefinitely.
+When stdin is not a TTY, `gc` does not guess at consent. In non-interactive mode, callers must pass `--yes` to mutate or `--dry-run` to inspect candidates.
+
+The third rule is the repo-identity drift check. It is intentionally based on the current adapter at `repoPath`, not on branch or lane-label derivation. If today's checkout at `repoPath` now identifies itself as a different app, the old row is drifted and should not survive indefinitely. If the user switches branches in place, that updates metadata on the next `prepare`; it is not drift by itself.
 
 ### Scoped cleanup for worktree removal
 
-`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. After the worktree is removed, devlane deletes only allocations whose `(app, lane, repoPath)` match that removed worktree. It does not scan unrelated repos, it does not remove sibling lanes for the same app, and it does not invoke `host gc`.
+`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. By default the command resolves `<lane>` to the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`. If that path is missing because the worktree was moved or renamed manually, the command fails and requires `--path <worktree>` rather than guessing from mutable lane metadata or catalog rows. After the worktree is removed, devlane deletes only allocations whose `(app, repoPath)` match that removed worktree. It does not scan unrelated repos, it does not remove sibling worktrees for the same app, and it does not invoke `host gc`.
+
+If `git worktree remove` succeeds but this scoped cleanup fails, the recovery path is the ordinary stale-entry sweep for that app: `devlane host gc --app <app>`. The removed `repoPath` now satisfies the normal stale-entry rules, so `host gc` is the deterministic cleanup tool for that partial-failure case.
 
 ## Why `down` does not touch the catalog
 
@@ -278,7 +315,7 @@ The third rule is the repo-identity drift check. It is intentionally based on th
 
 If `down` released ports, the next `up` would risk landing on different numbers, churning templates and breaking any external tool that cached discovery results.
 
-Keeping `down` narrow preserves lane identity across stop/start cycles. To fully retire a lane, use `devlane host gc`.
+Keeping `down` narrow preserves lane identity across stop/start cycles. For dev lanes, the normal retirement path is removing the worktree (`devlane worktree remove <lane>` in Phase 3, or manual worktree deletion followed by `host gc`). A checkout that still exists on disk keeps its allocation by design; branch switches within that checkout update metadata rather than retiring the lane.
 
 ## Multi-user and multi-machine notes
 

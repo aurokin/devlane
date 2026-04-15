@@ -4,14 +4,15 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
 
 ## Lifecycle commands
 
-- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. The scan walks descendants in lexical order, does not follow symlinks, and skips common non-app trees: `.git/`, `.devlane/`, `.direnv/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `target/`, and `tmp/`. Outcomes:
-  - **single** — one candidate (at cwd). Scaffold in place. Today's default path.
+- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. The scan walks descendants in lexical order, does not follow symlinks, and skips common non-app trees: `.git/`, `.devlane/`, `.direnv/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `target/`, and `tmp/`. Overlapping signals do not silently infer hybrid mode; `init` stays conservative there and points at an explicit hybrid template instead. Outcomes:
+  - **single** — exactly one candidate. If it is `cwd`, scaffold in place. If it is a descendant, scaffold there and print that choice explicitly.
   - **monorepo** — multiple candidates. Print the list with inferred kind per candidate, prompt the user to pick one or all, and scaffold `devlane.yaml` in each chosen subtree. `--all` skips the prompt.
   - **ambiguous** — no confident signal. Scaffold a CLI template and print a notice pointing at `--template baremetal-web` or `--template containerized-web`.
 
-  Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `cli`), `--from <path>` copies from any existing adapter, `--app <path>` targets a specific subtree and skips scanning, `--list` prints detected candidates without writing anything, `--yes` / `--all` skip interactive prompts (also skipped when stdin is not a TTY), `--force` overwrites an existing file.
+  Flags: `--template <name>` uses a named starter template (`containerized-web`, `baremetal-web`, `hybrid-web`, `cli`), `--from <path>` copies from any existing adapter as a literal starting point, `--app <path>` targets a specific subtree and skips scanning, `--list` prints detected candidates without writing anything, `--yes` / `--all` skip interactive prompts (also skipped when stdin is not a TTY), `--force` overwrites an existing file.
 
   If `init` finds multiple candidates and prompting is unavailable (non-TTY stdin, `--yes`, or an agent context), the command does **not** guess. `--all` means scaffold every candidate; `--app <path>` means scaffold just that subtree; otherwise `init` fails after printing the candidate list and tells the user to rerun with `--all` or `--app`.
+  `init --from <path>` does **not** re-root relative paths or silently rewrite repo-coupled fields. `compose_files`, template paths, `worktree.seed`, `app`, and hostname patterns are copied as written, then the command prints a review checklist and warns about referenced source-relative inputs that do not exist in the target repo.
 - `inspect` — derive and print the manifest. Always recomputes from the adapter and the current catalog; never reads `.devlane/manifest.json` off disk. Works before `prepare` has ever run: for unallocated ports it emits `allocated: false`, `ready: false`, and a **provisional** `port` computed against the live catalog using the current allocation rules. That provisional value is "what `prepare` would pick if it ran right now," not a committed allocation, so it may still change if another writer publishes first.
 - `prepare` — write the manifest, render generated files, and allocate ports via the host catalog. If no `devlane.yaml` is found, points the user at `devlane init`. If the compose pattern is in use, also writes `.devlane/compose.env`.
 - `up` — start the lane. The semantics follow the supervised-substrate rule:
@@ -25,21 +26,22 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
   - **Hybrid**: runs `docker compose down`. Bare-metal processes are the user's to stop.
 - `status` — print lane state without mutating anything. `status` is always safe because it only reads:
   - **Containerized**: runs `docker compose ps`. Compose is the authoritative source for which containers are up, their health, and their state.
-  - **Bare-metal**: prints the manifest-derived summary and, for every declared service, **probes the allocated port** to report whether something is bound (`bound` / `free`). Devlane cannot say *which* process is bound — it only owns state, not processes — so it does not claim `running` or `ours`. A `bound` port is just evidence that *a* process is listening on the port devlane reserved for that service.
-  - **Hybrid**: both. The compose side reports container state; the bare-metal side reports port-bound evidence for the declared services.
+  - **Bare-metal**: prints the manifest-derived summary and, for every declared service, reports one of three states: `bound`, `free`, or `unallocated`. Devlane probes only **allocated** ports. When `inspect` says a service is still `allocated: false`, `status` reports `unallocated` and may show the current provisional candidate, but it does not probe that provisional port. Devlane cannot say *which* process is bound — it only owns state, not processes — so it does not claim `running` or `ours`. A `bound` port is just evidence that *a* process is listening on the port devlane reserved for that service.
+  - **Hybrid**: both. The compose side reports container state; the host-port side reports `bound` / `free` / `unallocated` for every declared host port. The current adapter contract does not try to classify individual declared ports as "compose-owned" or "bare-metal-owned."
 
 The bare-metal asymmetry is deliberate: with compose, the supervisor can answer "is my service up?" definitively; without a supervisor, the best devlane can do is ask the kernel "is this port bound?" and say so plainly.
 - `doctor` — read-only preflight for the current repo. Checks obvious prerequisites and adapter sanity for the current lane context: readable adapter/config, required external tools, and compose-file presence when compose is declared. It reports missing prerequisites clearly and exits non-zero on failures. It does not claim app health, process ownership, or runtime readiness.
 
 ## Host catalog commands
 
-- `port <service>` — print the currently assigned port for a service. Plain number by default; `--verbose` for metadata; `--probe` to verify bindability via exit code.
-- `reassign <service>` — idempotent repair. Probes the current port and only moves it if actually blocked, otherwise no-op. `--lane <name>` changes the lane target while preserving app context:
-  - when run inside a repo (or with `--config` / `--cwd` pointing at one), operate on `<service>` for that app and the requested lane
-  - when repo context is unavailable and the implementation falls back to the host catalog, succeed only if exactly one catalog entry matches `(lane, service)`; zero matches fail clearly, and multiple matches across apps fail on ambiguity with the matching app/repo pairs printed
+- `port <service>` — print the currently assigned port for a service. Plain number by default; `--verbose` for metadata; `--probe` to verify bindability via exit code. If the service has not been allocated yet, fail clearly and point the caller at `inspect --json` for the current provisional candidate or `prepare` to commit one.
+- `reassign <service>` — scoped repair for one service allocation. By default it resolves the current checkout's `(app, repoPath, service)` row, probes the current port, and only moves it if actually blocked. `--force` skips the bindability no-op check and moves the allocation even when the current port is free; this is the explicit tool for moving an offline dev lane aside so stable can reclaim its fixture. `--lane <name>` is a convenience selector, not part of the identity key:
+  - when run inside a repo (or with `--config` / `--cwd` pointing at one), operate on `<service>` for the current checkout by default
+  - with `--lane <name>`, look for another allocation of the same app whose latest prepared metadata reports that lane name, then operate on its `(app, repoPath, service)` row
+  - if repo context is unavailable and the implementation falls back to the host catalog, succeed only if exactly one catalog row matches the selector; zero matches fail clearly, and **any** multiple match fails on ambiguity with the matching app/repo pairs printed
 - `host status` — list all allocations across the host.
-- `host doctor` — read-only host-wide audit. Probes every allocation and reports live conflicts, missing repos, missing service declarations, or repo-identity drift. Identity drift means the adapter currently loaded from `repoPath` no longer derives the same `(app, lane)` pair the catalog row claims. It exits non-zero when any allocation is stale, drifted, or conflicting. It does not delete anything; cleanup remains explicit via `host gc`.
-- `host gc` — remove catalog entries whose repos or services no longer exist, or whose current `(app, lane)` at `repoPath` no longer matches the catalog row. Supports `--app`, `--dry-run`, `--yes`.
+- `host doctor` — read-only host-wide audit. Probes every allocation and reports `bound` / `free` state for operator context, missing repos, missing service declarations, app/repo-path mismatches, and duplicate catalog claims. Metadata changes within a checkout (branch switch, lane-label change, stable/dev mode flip) are not treated as drift; they are refreshed on the next `prepare`. A singly claimed bound port is not an error by itself because host-wide probing cannot prove process ownership for bare-metal lanes. The command exits non-zero when any allocation is stale or when duplicate catalog claims exist. It does not delete anything; cleanup remains explicit via `host gc`.
+- `host gc` — remove catalog entries whose repos or services no longer exist, or whose current adapter at `repoPath` no longer identifies the same app. Supports `--app`, `--dry-run`, `--yes`. When stdin is not a TTY, it fails unless `--yes` or `--dry-run` is provided.
 
 See `65-host-catalog.md` for the catalog contract, allocation model, and fixture semantics for stable lanes.
 
@@ -47,10 +49,40 @@ See `65-host-catalog.md` for the catalog contract, allocation model, and fixture
 
 Worktree lifecycle is Phase 3 (see `100-implementation-plan.md`). The planned shape:
 
-- `worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. The target path is a sibling of the source repo root: `<repo-root-parent>/<repo-root-base>-<lane-slug>`. By default the command creates a new branch named `<lane>` from the current `HEAD`; if that branch already exists, it fails rather than silently resetting or reusing a different ref. Seed copy reads the adapter's `worktree.seed` list. `prepare` then registers the dev lane's ports in the catalog before the user starts anything.
-- `worktree remove <lane>` — `git worktree remove` + dedicated scoped catalog cleanup so the catalog self-cleans. "Scoped" means removing only allocations whose `(app, lane, repoPath)` match the worktree being removed; it is not a host-wide sweep and it does not run `host gc`.
+- `worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. The target path is a sibling of the source repo root: `<repo-root-parent>/<repo-root-base>-<lane-slug>`. By default the command creates a new branch named `<lane>` from the current `HEAD`; if that branch already exists, it fails rather than silently resetting or reusing a different ref. `<lane>` is the raw lane label and branch name; it must be a valid new local Git branch name, must slugify to a non-empty `<lane-slug>`, and must not equal the adapter's `stable_name`. The branch collision check uses raw `<lane>`; the path collision check uses `<lane-slug>`. Distinct raw lane names that would slugify to the same `<lane-slug>` are rejected because they would target the same sibling path. This command creates dev lanes only. Seed copy reads the adapter's `worktree.seed` list. `prepare` then registers the dev lane's ports in the catalog before the user starts anything.
+- `worktree remove <lane>` — `git worktree remove` + dedicated scoped catalog cleanup so the catalog self-cleans. By default `<lane>` resolves to the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`. If that path does not exist, the command fails rather than guessing from mutable lane metadata. `--path <worktree>` targets a manually renamed or moved worktree explicitly. "Scoped" means removing only allocations whose `(app, repoPath)` match the worktree being removed; it is not a host-wide sweep and it does not run `host gc`. Capture the target checkout's `app` and `repoPath` before removal so cleanup still has a stable key after the directory is gone.
 
 `worktree list` is explicitly **not** planned. `git worktree list` plus `devlane host status` already tells you what's running where.
+
+### Worktree failure semantics
+
+`worktree create` is ordered as:
+
+1. validate `<lane>` and target collisions
+2. `git worktree add`
+3. seed copy
+4. `prepare` in the new checkout
+
+Failure handling is explicit:
+
+- if validation fails, nothing is created
+- if `git worktree add` fails, nothing else runs
+- if seed copy fails after `git worktree add`, devlane leaves the new worktree on disk, does **not** run `prepare`, does **not** publish any catalog mutation, and prints the exact worktree path plus the recovery choices: fix the seed issue and run `devlane prepare` in that checkout, or remove the checkout with `git worktree remove`
+- if `prepare` fails after seed copy, devlane leaves the new worktree and any copied seed files in place, and the `prepare` failure rules apply: repo-local outputs inside the new checkout may be partially updated, but the catalog mutation stays unpublished. The printed recovery path is to fix the reported issue and rerun `devlane prepare` in the new checkout, or manually remove the checkout if the lane is being abandoned
+
+`worktree create` does **not** auto-remove a checkout that was already created successfully. Once files or credentials may have been copied into place, cleanup stays explicit.
+
+`worktree remove` is ordered as:
+
+1. resolve the target worktree path and capture its `(app, repoPath)` identity
+2. run `git worktree remove`
+3. delete only the captured `(app, repoPath)` allocations from the catalog
+
+Failure handling is explicit here too:
+
+- if path resolution or identity capture fails, nothing is removed
+- if `git worktree remove` fails, catalog cleanup does not run
+- if `git worktree remove` succeeds but scoped catalog cleanup fails, the worktree stays removed and the command prints that the remaining repair step is catalog cleanup; the deterministic recovery path is `devlane host gc --app <app>` because the removed `repoPath` now satisfies the normal stale-entry rules
 
 ## Ownership boundaries
 
@@ -66,6 +98,8 @@ The shared tool owns:
 - common health and diagnostic output
 - the host catalog and port allocation
 - `~/.config/devlane/catalog.json` (state, tool-written)
+
+For dev lanes, the durable host-catalog identity is the checkout path. The lane label, branch, and mode remain important manifest metadata and operator-facing display fields, but they do not make a row "become a different lane" when the user changes branches in place.
 
 The repo adapter owns:
 

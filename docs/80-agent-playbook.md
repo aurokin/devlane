@@ -8,7 +8,7 @@ When asked to work inside a repo that uses `devlane`, agents should prefer this 
 
 1. `inspect --json`
 2. check `manifest.ready`
-3. `prepare` (if `ready: false`)
+3. `prepare` when `ready: false`, and also whenever the task depends on current generated outputs or `.devlane/compose.env`
 4. `up` or `status`
 
 That order keeps discovery explicit and reproducible.
@@ -21,7 +21,7 @@ That order keeps discovery explicit and reproducible.
 
 Agents should call `inspect --json` every time they need authoritative information. The file on disk is for wrappers and humans who want a static file to eyeball.
 
-See principle #3 in `docs/00-principles.md` and the "three axes of freshness" section in `docs/60-manifest-contract.md`.
+See principle #3 in `docs/00-principles.md` and the "Freshness surfaces" section in `docs/60-manifest-contract.md`.
 
 ## What `ready` does (and doesn't) tell you
 
@@ -35,14 +35,16 @@ It does not mean:
 
 For "is the port actually bindable": `devlane port <svc> --probe`. For "is the lane running": `devlane status`. For health: hit `manifest.ports.<svc>.healthUrl` yourself.
 
+If your task depends on generated files or `.devlane/compose.env`, do not use `ready` as a shortcut for "prepare definitely ran." Run `prepare`.
+
 ## What `devlane status` tells you (and how bare-metal differs from compose)
 
 `status` is read-only. What it can tell you depends on whether the lane has a supervisor:
 
 - **Containerized and hybrid compose side**: runs `docker compose ps`. You get container state, health, uptime, ports — the supervisor knows.
-- **Bare-metal and hybrid bare-metal side**: probes every declared port and prints `bound` or `free`. Nothing more. Devlane does not know which process holds a bound port or whether it is your app.
+- **Bare-metal and hybrid bare-metal side**: for allocated services, probes the reserved port and prints `bound` or `free`; for pre-prepare services (`allocated: false`), prints `unallocated` instead of probing the provisional candidate. Devlane does not know which process holds a bound port or whether it is your app.
 
-A `bound` bare-metal service is not proof the app is running — only that *something* is listening on the port devlane reserved. An orphan process from a previous run, an unrelated app, or a stale container all look identical. Treat `bound` as "probably up"; use `healthUrl` to confirm when correctness matters.
+A `bound` bare-metal service is not proof the app is running — only that *something* is listening on the port devlane reserved. An orphan process from a previous run, an unrelated app, or a stale container all look identical. Treat `bound` as "probably up"; use `healthUrl` to confirm when correctness matters. Treat `unallocated` as "run `prepare` first," not as a probe failure.
 
 ## What agents should not do first
 
@@ -69,7 +71,7 @@ If `devlane init` detects multiple app candidates, it enters **monorepo** mode. 
 
 1. run `devlane init --list` first to see the detected candidates and inferred kinds
 2. decide whether to scaffold one adapter per app (`--all`) or target a specific subtree (`--app <path>`)
-3. each resulting `devlane.yaml` is self-contained — the catalog keys off `(app, lane, service)`, so siblings in the same monorepo share a host catalog but not a manifest
+3. each resulting `devlane.yaml` is self-contained — the catalog keys off `(app, repoPath, service)`, so siblings in the same monorepo share a host catalog but not a manifest
 
 Devlane does not ship a monorepo workspace file. If you need to enumerate or operate across all apps, loop over the discovered `devlane.yaml` paths yourself. `devlane host status` works across all of them automatically because the catalog is already host-scoped.
 
@@ -87,6 +89,8 @@ A repo adopting `devlane` only needs to answer a small number of questions:
 - for bare-metal, what commands start the services (optional, powers `devlane up`)?
 - if the host has a proxy or DNS, what hostname pattern should lanes use (optional)?
 - which files (credentials, `.env.local`, etc.) should be copied into a new worktree (optional, powers `devlane worktree create`)?
+
+If you use `devlane init --from <path>`, treat the copied adapter as a draft. Relative paths and repo-specific identifiers are preserved literally; review `app`, `compose_files`, template paths, output paths, and `worktree.seed` before assuming the target repo is correctly wired.
 
 ## Discovery: hostnames vs ports
 
@@ -106,21 +110,21 @@ When an agent encounters a port conflict, the order is:
 1. **Re-read `inspect --json`.** Get a fresh manifest, including a fresh `ready` and fresh `ports.<service>.port`.
 2. If the manifest value differs from what the agent was using, the agent was stale. Use the manifest value. Done.
 3. If the manifest value matches what the agent was using, verify the port is actually free for us: `devlane port <service> --probe`. A non-zero exit confirms a real conflict.
-4. Only then: `devlane reassign <service>`. This is idempotent and scoped — it will no-op if the conflict resolved itself, and it will only move the one service.
+4. Only then: `devlane reassign <service>`. This is idempotent and scoped — it will no-op if the conflict resolved itself, and it will only move the one service. Use `--force` only when you intentionally need to move an offline checkout aside, such as stable reclaiming its fixture from an unbound dev lane.
 5. Re-read `inspect --json` for the new port and continue.
 
 Reassign should be the last step, not the first. Most "conflicts" are staleness, and the stickiness guarantee of the host catalog is only valuable if agents avoid unnecessary reassigns.
 
 Before calling `reassign`, check whether the process holding the port is actually yours. Orphan processes from a previous run look identical to external collisions from devlane's perspective.
 
-When using `reassign --lane <name>`, prefer staying in the intended repo or passing `--config` / `--cwd` for it so the app context stays explicit. Lane names are not globally unique; a repo-less catalog lookup should only succeed when exactly one matching `(lane, service)` entry exists across the host.
+When using `reassign --lane <name>`, prefer staying in the intended repo or passing `--config` / `--cwd` for it so the app context stays explicit. Lane names are selector metadata, not the durable identity key; a repo-less catalog lookup should only succeed when exactly one matching row exists across the host.
 
 ### When `prepare` fails with a collision error
 
 If `prepare` itself fails with a stable-fixture collision (see `65-host-catalog.md`), the error message prints the exact resolution. Agents should parse the message and follow its instructions:
 
 - **Stable vs another app's stable** — no automatic resolution. The agent should report the error to the user and not pick a winner. Which app moves is a human decision.
-- **Stable vs offline dev lane** — the error includes a ready-to-paste `devlane reassign web --lane <name> && devlane prepare` command. The agent can run it.
+- **Stable vs offline dev lane** — the error includes a ready-to-paste `devlane reassign web --lane <name> --force && devlane prepare` command. The agent can run it.
 - **Stable vs bound dev lane** — the dev lane must be stopped first. The agent should report the error and not attempt to kill foreign processes.
 
 ## Worktree lifecycle (Phase 3)
@@ -133,7 +137,9 @@ When Phase 3 lands, agents should prefer `devlane worktree create <lane>` over `
 
 After `worktree create` returns, the new worktree has everything it needs to run: its own lane identity, its own allocated ports, its own generated files, and whatever seed files the adapter declared. No manual copying.
 
-`devlane worktree remove <lane>` is the inverse: `git worktree remove` plus scoped catalog cleanup so the catalog does not accumulate stale entries. "Scoped" means deleting only the removed worktree's `(app, lane, repoPath)` allocations, not doing a host-wide sweep.
+`devlane worktree remove <lane>` is the inverse: `git worktree remove` plus scoped catalog cleanup so the catalog does not accumulate stale entries. By default it resolves `<lane>` through the conventional sibling-path rule. If the worktree was manually moved or renamed, pass `--path <worktree>`; the command does not guess from lane metadata alone. "Scoped" means deleting only the removed worktree's `(app, repoPath)` allocations, not doing a host-wide sweep.
+
+Changing branches in place inside an existing checkout is acceptable. For dev lanes, the checkout path is the durable identity anchor; branch, lane label, and mode are refreshed metadata. Agents should not treat an in-place branch switch as grounds to reassign or garbage-collect a lane by itself.
 
 Agents should **not**:
 
@@ -151,6 +157,8 @@ If the adapter has no `worktree.seed` block, the agent should surface that as ad
 - **Neither** (pure CLI or no lifecycle needs): `devlane up` is a no-op with a one-line hint.
 
 Agents should not assume `up` always runs something. Read the adapter to know which shape applies, or just trust `up`'s output — it is always self-describing.
+
+Agents should also not expect bare-metal run commands to be present in the manifest. That guidance lives in the adapter and `up` output, not in `inspect --json`.
 
 ## Good agent behavior
 

@@ -1,8 +1,14 @@
 # Acceptance checklist
 
-Use this as the practical done bar.
+Use this as the practical done bar. Read it in three layers:
 
-## Principles and design discipline
+- global invariants that must stay true in every phase
+- phase-specific acceptance gates
+- the final repo-adoption bar
+
+## Global invariants
+
+### Principles and design discipline
 
 - `docs/00-principles.md` states the six principles and is read before any other design doc
 - `docs/10-when-to-use-this.md` gates adoption: multiple agents in parallel, many worktrees, or many repos with overlapping port conventions
@@ -10,31 +16,47 @@ Use this as the practical done bar.
 - `AGENTS.md` non-negotiable #11 (no application framework) is present and references `docs/00-principles.md`
 - proxy integration and stable deploy mechanics do not appear as planned phases in `docs/100-implementation-plan.md`
 
-## Init
+### Agent experience
+
+- `AGENTS.md` points agents to the correct docs, including `docs/00-principles.md` and `docs/10-when-to-use-this.md`
+- docs and schemas agree
+- examples still reflect current contracts
+- prompt templates remain usable
+- the manifest contains everything an agent needs for discovery (ports with allocation state, top-level `ready`, hostnames when declared, generated file paths)
+- agents consistently read `inspect --json` rather than the on-disk `.devlane/manifest.json`
+- the agent playbook tells agents to run `prepare` when generated outputs or compose env are needed, not only when `ready` is false
+- docs consistently treat dev-lane catalog identity as `(app, repoPath, service)` with `lane` / `mode` / `branch` as metadata
+
+## Phase 1 acceptance
+
+### Init
 
 - `devlane init` creates a valid `devlane.yaml` that passes schema validation
 - `devlane init` auto-detects runtime pattern from signals (compose files present → containerized; framework manifest without compose → bare-metal; neither → CLI)
 - `devlane init` scans cwd and up to depth 3 below for candidate app roots using `compose*.yaml`, `package.json`, `Cargo.toml`, `go.mod`, `Gemfile`, `*.csproj` as signals
 - `devlane init` scans in deterministic lexical order, does not follow symlinks, and skips common non-app trees: `.git/`, `.devlane/`, `.direnv/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `target/`, `tmp/`
-- `devlane init` in a single-candidate tree scaffolds in place (the common case)
+- `devlane init` in a single-candidate tree scaffolds in place when the candidate is `cwd`; if the only candidate is a descendant, it scaffolds there and prints the selected path
 - `devlane init` in a multi-candidate tree enters monorepo mode: lists candidates with inferred kinds and prompts for one or all
 - `devlane init --all` in monorepo mode scaffolds an adapter in every candidate without prompting
 - `devlane init --app <path>` targets a specific subtree and skips scanning
 - `devlane init --list` prints detected candidates without writing anything
-- `devlane init --template <name>` overrides detection and uses a named starter template (`containerized-web`, `baremetal-web`, `cli`)
+- `devlane init --template <name>` overrides detection and uses a named starter template (`containerized-web`, `baremetal-web`, `hybrid-web`, `cli`)
 - `devlane init --from <path>` copies an existing adapter as the starting point
+- `devlane init --from <path>` copies the source adapter literally; it does not re-root relative paths or rewrite `app`, `host_patterns`, `compose_files`, template paths, or `worktree.seed`
+- `devlane init --from <path>` prints a post-copy review checklist for repo-coupled fields and warns when referenced source-relative inputs such as compose files or templates do not exist in the target repo
 - `devlane init` refuses to overwrite an existing `devlane.yaml` unless `--force` is passed
 - `devlane init` prompts for confirmation when stdin is a TTY; `--yes` / `--all` / a non-TTY stdin skips the prompt
 - when multiple candidates are found and prompting is unavailable, `devlane init` fails unless `--all` or `--app <path>` is provided; it never guesses
 - `devlane init` prints its detection reasoning (e.g., `Detected: containerized (found compose.yaml)`) so the user knows why it picked what it picked
-- `devlane init` scaffolds `host_patterns` as a commented-out block in all three templates; users opt in by uncommenting
+- `devlane init` scaffolds `host_patterns` as a commented-out block in every starter template; users opt in by uncommenting
 - `devlane init` scaffolds `worktree.seed` as a commented-out block with placeholder examples; users add their own paths explicitly
 - `devlane init` never scaffolds `runtime.run.commands` entries that would be executed — there is no execute mode; all bare-metal commands are print-only
-- Ambiguous detection defaults to CLI with a clear notice pointing at `--template baremetal-web`
+- Ambiguous detection defaults to CLI with a clear notice pointing at `--template baremetal-web` or `--template containerized-web`
+- hybrid mode is never auto-detected from overlapping filesystem signals alone; when `init` sees both compose and bare-metal hints, it prints a notice pointing at `--template hybrid-web`
 - `devlane prepare` on a directory with no `devlane.yaml` prints a pointer to `devlane init`
 - any future proxy-signal detection in `init` is suggestion-only; it never silently infers `host_patterns` or hostname ownership into the adapter contract
 
-## Core contract
+### Core contract
 
 - `devlane.yaml` can be loaded from cwd or an explicit path
 - `prepare`/`inspect`/`up` walk up from cwd to find the nearest `devlane.yaml`
@@ -42,13 +64,15 @@ Use this as the practical done bar.
 - `inspect --json` works before `prepare` has ever run; emits `ready: false` and `allocated: false` for pre-prepare ports
 - for pre-prepare dev lanes, `inspect --json` computes provisional `ports.<name>.port` values against the live catalog using the current allocator; these values are not reserved and may still change before `prepare`
 - for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port`
+- `ready` remains an allocation-state signal only; it is not a proxy for successful repo-local writes or "prepare definitely ran"
 - `inspect --json` emits deterministic JSON
+- in-place branch switching inside an existing checkout is acceptable; it updates manifest metadata but does not create host-catalog drift by itself
 - lane names are stable and slugified
 - stable vs dev mode is explicit or reproducible
 - paths, hostnames, and project names derive from the adapter
 - `host_patterns` is optional; the manifest emits `publicHost: null` when omitted
 
-## Manifest shape
+### Manifest shape
 
 - top-level fields are exactly: `schema`, `app`, `kind`, `ready`, `lane`, `paths`, `network`, `ports`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
 - `ready` is `true` iff every declared port has `allocated: true`; `true` when the adapter declares no ports
@@ -58,7 +82,7 @@ Use this as the practical done bar.
 - env is a *projection* computed at write time, not stored in the manifest; consumers read it from `.devlane/compose.env` or the template `env.*` scope
 - template scope flattens `ports.<name>` to the integer port number (not the `{port, allocated, healthUrl}` object); templates use `{{ports.web}}` to get `3100`
 
-## Generated outputs
+### Generated outputs
 
 - `prepare` writes the manifest
 - `prepare` writes `.devlane/compose.env` when the adapter declares `compose_files`, omits it otherwise
@@ -70,10 +94,11 @@ Use this as the practical done bar.
 - `prepare` tracks a sidecar hash per generated file under `.devlane/`
 - when an on-disk generated file has been hand-edited, `prepare` prints a one-line warning and writes anyway
 - first `prepare` with no sidecar hash quietly overwrites existing files with a one-line notice
-- `prepare` validates all repo-local writes that can fail before catalog work begins, computes the catalog mutation under lock, performs repo-local writes against the unpublished result, and publishes the catalog only after those writes succeed
-- a failed `prepare` or `reassign` write phase does not leave `inspect --json` reporting a misleadingly ready lane with stale or missing generated outputs
+- `prepare` validates all repo-local writes that can fail before catalog work begins, computes the catalog mutation under lock, stages repo-local writes to temp files, promotes them in deterministic order, and publishes the catalog only after those promotions succeed
+- a failed `prepare` or `reassign` write phase does not publish new catalog state or make `inspect --json` look more prepared than the last successful publish; existing `ready` state may still reflect prior allocations because `ready` is not a local-write-freshness bit
+- if a repo-local promotion fails after earlier outputs were already promoted, the command reports the partial local state explicitly and leaves the catalog unpublished
 
-## Compose lifecycle
+### Compose lifecycle
 
 - Compose commands include the lane-specific project name
 - Compose files are resolved relative to the adapter location
@@ -84,26 +109,28 @@ Use this as the practical done bar.
 - `--dry-run` shows the exact command without running it
 - `status` works without mutating state
 
-## Bare-metal lifecycle
+### Bare-metal lifecycle
 
 - `devlane up` is a no-op for bare-metal adapters without `runtime.run.commands`, printing a one-line hint
 - `devlane up` **prints** rendered commands when `runtime.run.commands` is declared — never spawns them
 - there is no `runtime.run.mode` field; the schema rejects it
 - `devlane down` is always a no-op for bare-metal (no process tracking)
-- `devlane status` for bare-metal prints the manifest-derived summary and probes each declared port, labeling `bound` / `free`
+- `devlane status` for bare-metal prints the manifest-derived summary and reports each declared port as `bound`, `free`, or `unallocated`
 - `devlane status` bare-metal output never claims the process is "ours", "healthy", or "running" — only that a port is bound
-- `runtime.run.commands[].command` renders with the same template scope as `outputs.generated`
+- pre-prepare bare-metal `status` does not probe provisional candidate ports; it labels them `unallocated` and points the user at `prepare`
+- `runtime.run.commands[].command` renders with the same template scope as `outputs.generated`: top-level manifest groups, flattened `ports.<name>`, and `env.<KEY>`
 
-## Hybrid lifecycle
+### Hybrid lifecycle
 
 - When an adapter declares both `compose_files` and `runtime.run.commands`, `devlane up` prints the bare-metal commands first, then runs `docker compose up`
 - If compose fails in hybrid mode, the printed bare-metal commands remain visible in the terminal output above the error
 - `devlane up` exit code in hybrid mode follows compose's exit code
 - `devlane down` in hybrid mode runs `docker compose down`; bare-metal processes are the user's to stop
-- `devlane status` in hybrid mode emits both halves: compose `ps` output for the supervised services, port probes for the bare-metal ones
+- `devlane status` in hybrid mode emits both halves: compose `ps` output for the supervised services, plus `bound` / `free` / `unallocated` results for every declared host port; it does not infer per-port substrate ownership from the current adapter shape alone
+- pre-prepare hybrid `status` does not probe provisional host-port candidates; those services remain `unallocated` until `prepare` commits them
 - `examples/hybrid-web/` exercises the pattern end to end (compose sidecar + `runtime.run.commands` + `kind: hybrid`)
 
-## Doctor
+### Doctor
 
 - `devlane doctor` is read-only and does not mutate lane or catalog state
 - `devlane doctor` checks only tool prerequisites and adapter/config sanity for the current repo
@@ -112,7 +139,15 @@ Use this as the practical done bar.
 - `devlane doctor` exits non-zero when a prerequisite or adapter/config error is found
 - `devlane doctor` output distinguishes actionable failures from informational notes so it is not confused with `status`
 
-## Host catalog
+### Validation strictness
+
+- schema-load errors fail before `prepare` logic runs: unknown schema version, invalid `kind`, duplicate `ports[].name`, `host_patterns.dev` missing `{lane}`, `host_patterns.stable == host_patterns.dev`, missing `outputs.manifest_path`, presence of a `runtime.run.mode` field (removed; schema rejects it)
+- `prepare`-time errors fail loudly: missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable fixture in `reserved`, pool exhaustion
+- warnings do not block: adapter `default` changed since last allocation, `default` outside `port_range` (noted in `inspect --verbose`), `kind: web` with no `ports` and no `compose_files`
+
+## Phase 2 acceptance
+
+### Host catalog
 
 - `~/.config/devlane/catalog.json` is created on first `prepare` and survives process exits
 - `~/.config/devlane/config.yaml` is optional and reasonable defaults apply when it is missing
@@ -121,30 +156,35 @@ Use this as the practical done bar.
 - catalog write lock acquire timeout is 30 seconds; failure prints a clear message
 - catalog reads do not take the lock
 - `prepare` allocates a port for every adapter-declared service
+- allocation order for multiple services is adapter declaration order, with earlier selections held in memory while later services are resolved
 - allocations are sticky across `up`/`down`/`up` cycles
 - `prepare` does not re-probe existing allocations
 - `down` does not modify the catalog
 - stable lanes treat `stable_port` as a fixture when declared, otherwise `default`
 - stable-lane `prepare` fails loudly on any collision (no silent fallback to pool)
 - stable-vs-stable collision prints both adapter paths; no command to paste
-- stable-vs-offline-dev collision prints a ready-to-paste `reassign --lane ... && prepare`
-- stable-vs-bound-dev collision prints a multi-step recipe; devlane does not kill foreign processes
+- stable-vs-offline-dev collision prints a ready-to-paste `reassign --lane ... --force && prepare`
+- stable-vs-bound-dev collision prints a runtime-shaped recipe: compose-backed lanes may use `devlane down`, but pure bare-metal lanes are told to stop their own process outside devlane before `reassign` / `prepare`
 - `devlane port <service>` prints a plain number by default
+- `devlane port <service>` fails clearly when the service has no assigned allocation yet and points at `inspect --json` for the current provisional candidate or `prepare` to commit one
 - `devlane port <service> --probe` exits non-zero when the assigned port is not bindable
 - `--probe` tests both `0.0.0.0` and `::` (IPv6 with V6ONLY=1), TCP-only
-- `devlane reassign <service>` is a no-op when the current port is free
+- `devlane reassign <service>` is a no-op when the current port is free unless `--force` is passed
 - `devlane reassign <service>` only moves the requested service
-- `devlane reassign <service> --lane <name>` can target another lane of the same app when repo context is supplied by the current repo or by `--config` / `--cwd`
-- if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching `(lane, service)` entry exists; multiple matches across apps fail with a clear ambiguity error
+- `devlane reassign <service> --force` intentionally moves an offline checkout aside even when its current port is free
+- `devlane reassign <service> --lane <name>` can target another checkout of the same app by lane metadata when repo context is supplied by the current repo or by `--config` / `--cwd`
+- if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching selector row exists; any multiple match fails with a clear ambiguity error
 - `devlane host status` lists every allocation on the host
 - `devlane host doctor` is read-only and does not mutate the catalog
-- `devlane host doctor` probes every allocation and reports bindability conflicts, missing repos, missing service declarations, or repo-identity drift
-- `devlane host doctor` exits non-zero when any allocation is stale or conflicting
+- `devlane host doctor` probes every allocation and reports `bound` / `free` status for operator context, missing repos, missing service declarations, app/repo-path drift, and duplicate catalog claims
+- `devlane host doctor` does not treat a singly claimed bound port as an error by itself; host-wide probing cannot prove ownership for bare-metal lanes
+- `devlane host doctor` exits non-zero when any allocation is stale or when duplicate catalog claims exist
 - `devlane host doctor` does not delete stale entries; cleanup remains explicit via `host gc`
-- `devlane host gc` removes entries whose `repoPath` is missing, whose service is no longer declared, OR whose current `(app, lane)` at `repoPath` no longer matches the catalog row
-- `devlane host doctor` and `host gc` define repo-identity drift by loading the adapter at `repoPath` and re-deriving the current `(app, lane)` for that checkout
+- `devlane host gc` removes entries whose `repoPath` is missing, whose service is no longer declared, OR whose current `app` at `repoPath` no longer matches the catalog row
+- `devlane host doctor` and `host gc` define repo-identity drift by loading the adapter at `repoPath` and re-deriving the current `app` for that checkout
 - `devlane host gc` supports `--app`, `--dry-run`, and `--yes`
 - `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
+- `devlane host gc` in non-interactive mode fails unless `--yes` or `--dry-run` is provided
 - reserved ports in `config.yaml` are never allocated, even when they match a dev-lane adapter's declared `default`
 - adapter-level `reserved` is merged with host `reserved` at allocation time; additive only
 - `pool_hint: [low, high]` is walked before the host-wide `port_range` during dev-lane pool allocation
@@ -153,47 +193,45 @@ Use this as the practical done bar.
 - allocations from the pool stay within `port_range`
 - adapter-declared `default` and `stable_port` are honored even when they sit outside `port_range`
 
-## Worktree lifecycle (Phase 3)
+## Phase 3 acceptance
+
+### Worktree lifecycle
 
 - `devlane worktree create <lane>` runs `git worktree add` at the sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`
-- `worktree create` creates a new branch named `<lane>` from the source checkout's current `HEAD`
-- `worktree create` fails rather than guessing when the target path already exists or the target branch already exists
+- `worktree create` creates a new branch named raw `<lane>` from the source checkout's current `HEAD`
+- `worktree create` requires `<lane>` to be a valid new local Git branch name and to slugify to a non-empty `<lane-slug>`
+- `worktree create` fails rather than guessing when the target path already exists, the target branch already exists, or a distinct raw lane name would collide on the same `<lane-slug>`
+- `worktree create` rejects `<lane>` equal to the adapter's `stable_name`; the command is for new dev lanes only
 - `worktree create` copies every path listed in `worktree.seed` from the source checkout into the new worktree, **before** `prepare` runs
 - `worktree.seed` directories are copied recursively
 - `worktree.seed` entries that are missing in the source checkout warn and continue — they do not fail the command
 - `worktree.seed` entries that also appear in `outputs.generated[].destination` are skipped with a one-line notice (prepare will render them)
+- `worktree.seed` symlinks are recreated as symlinks; devlane does not dereference or rewrite their targets
+- `worktree.seed` preserves regular-file mode bits best-effort and does not preserve ownership
+- `worktree.seed` overwrites existing destination paths in the new worktree for explicit seed entries, except for destinations skipped because they are generated outputs
 - `worktree create` prints the full list of copied paths on completion for security clarity
 - `worktree create` runs `prepare` in the new checkout so the catalog registers the new dev lane's ports before the user starts anything
-- if `worktree create` fails after `git worktree add` succeeds, the command prints the resulting state and the exact rollback or recovery action required; tests cover seed-copy failure and `prepare` failure after worktree creation
+- if seed copy fails after `git worktree add` succeeds, the command leaves the new checkout on disk, does not publish catalog state, and prints the exact recovery action (`devlane prepare` in that checkout after fixing the issue, or `git worktree remove` to abandon it)
+- if `prepare` fails after worktree creation, the command leaves the new checkout and any copied seed files in place, leaves the catalog unpublished for the failed mutation, and prints the exact recovery action
+- `worktree create` never auto-removes a checkout that was already created successfully
+- `devlane worktree remove <lane>` resolves `<lane>` to the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>` by default; if that path does not exist, the command fails clearly instead of guessing
+- `devlane worktree remove <lane> --path <worktree>` targets a manually moved or renamed worktree explicitly
 - `devlane worktree remove <lane>` runs `git worktree remove` and then dedicated scoped catalog cleanup so the catalog does not accumulate stale entries
-- scoped cleanup removes only allocations matching the removed worktree's `(app, lane, repoPath)`
+- `worktree remove` captures the target checkout's `app` and `repoPath` before `git worktree remove` so scoped cleanup still has a stable identity key after the directory is gone
+- scoped cleanup removes only allocations matching the removed worktree's `(app, repoPath)`
 - worktree scoped cleanup is not `host gc` and does not scan unrelated repos
-- if `worktree remove` completes only one half (git removal or scoped cleanup), the command reports the partial state clearly and leaves a deterministic recovery path
+- if `git worktree remove` fails, scoped catalog cleanup does not run
+- if `git worktree remove` succeeds but scoped cleanup fails, the command reports the partial state clearly and leaves a deterministic recovery path (`devlane host gc --app <app>`)
 - there is no `devlane worktree list` command
 - devlane does not touch per-worktree git config
 - devlane does not ship any default seed list; every path is explicit in the adapter
-
-## Validation strictness
-
-- schema-load errors fail before `prepare` logic runs: unknown schema version, invalid `kind`, duplicate `ports[].name`, `host_patterns.dev` missing `{lane}`, `host_patterns.stable == host_patterns.dev`, missing `outputs.manifest_path`, presence of a `runtime.run.mode` field (removed; schema rejects it)
-- `prepare`-time errors fail loudly: missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable fixture in `reserved`, pool exhaustion
-- warnings do not block: adapter `default` changed since last allocation, `default` outside `port_range` (noted in `inspect --verbose`), `kind: web` with no `ports` and no `compose_files`
-
-## Agent experience
-
-- `AGENTS.md` points agents to the correct docs, including `docs/00-principles.md` and `docs/10-when-to-use-this.md`
-- docs and schemas agree
-- examples still reflect current contracts
-- prompt templates remain usable
-- the manifest contains everything an agent needs for discovery (ports with allocation state, top-level `ready`, hostnames when declared, generated file paths)
-- agents consistently read `inspect --json` rather than the on-disk `.devlane/manifest.json`
 
 ## Real adoption bar
 
 A repo can be considered adopted when:
 
 - its generated local files come from `prepare`
-- its lane runtime can be started with `up` (or, for bare-metal without `runtime.run.commands`, its run commands are documented elsewhere and discoverable via the manifest)
+- its lane runtime can be started with `up` (or, for bare-metal without `runtime.run.commands`, its run commands are documented elsewhere in the repo; they are not expected to be discoverable via the manifest)
 - if the repo has credentials or per-developer env files, those are declared in `worktree.seed` so new worktrees get them automatically
 - stable vs dev ownership is documented
 - an agent can enter the repo, run `inspect --json`, check `ready`, and act without repo-specific port heuristics
