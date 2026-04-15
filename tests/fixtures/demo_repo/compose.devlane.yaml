@@ -1,6 +1,0 @@
-services:
-  web:
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${DEVLANE_COMPOSE_PROJECT}-web.rule=Host(`${DEVLANE_PUBLIC_HOST}`)"
-      - "traefik.http.services.${DEVLANE_COMPOSE_PROJECT}-web.loadbalancer.server.port=80"

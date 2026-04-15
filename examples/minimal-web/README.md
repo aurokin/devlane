@@ -7,7 +7,7 @@ Use it to learn the lane contract before looking at the more opinionated example
 Try:
 
 ```bash
-python -m devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
-python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
-python -m devlane up --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --dry-run
+go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
+go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
+go run ./cmd/devlane up --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --dry-run
 ```

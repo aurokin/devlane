@@ -6,7 +6,7 @@ It is designed for the case where you have many repos, many worktrees, some stab
 
 The kit contains three things at once:
 
-1. a **small Python CLI scaffold**
+1. a **small Go CLI scaffold**
 2. a **progressive-disclosure documentation set**
 3. **example adapters** for a minimal web app, `agentchat`, and `wowhead_cli`
 
@@ -68,12 +68,24 @@ Phase 3 adds minimal worktree lifecycle (`create` + `remove`, with adapter-decla
 ## Quickstart
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-pytest
-python -m devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
-python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
+go mod download
+go tool gofumpt -w .
+go tool goimports -w ./cmd ./internal
+go tool golangci-lint run
+go tool gotestsum -- ./...
+go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
+go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
+```
+
+## Go Tooling
+
+The scaffold uses Go's module-pinned tool directives, so formatting, import cleanup, linting, and test output come from `go tool` rather than ad hoc local installs:
+
+```bash
+go tool gofumpt -w .
+go tool goimports -w ./cmd ./internal
+go tool golangci-lint run
+go tool gotestsum -- ./...
 ```
 
 ## Progressive disclosure map
@@ -99,12 +111,13 @@ python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examp
 devlane-agent-kit/
 ├── AGENTS.md
 ├── README.md
+├── cmd/devlane/
 ├── docs/
 ├── examples/
+├── internal/
 ├── prompts/
 ├── schemas/
-├── src/devlane/
-└── tests/
+└── .golangci.yml
 ```
 
 ## Suggested first milestone

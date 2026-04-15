@@ -5,21 +5,20 @@ This is the fastest path to a first concrete success.
 ## 1. Create a local environment
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
+go mod download
+go tool gotestsum -- ./...
 ```
 
 ## 2. Run the tests
 
 ```bash
-pytest
+go tool gotestsum -- ./...
 ```
 
 ## 3. Inspect the minimal example
 
 ```bash
-python -m devlane inspect \
+go run ./cmd/devlane inspect \
   --config examples/minimal-web/devlane.yaml \
   --cwd examples/minimal-web \
   --json
@@ -37,7 +36,7 @@ You should see a manifest with:
 ## 4. Generate local outputs
 
 ```bash
-python -m devlane prepare \
+go run ./cmd/devlane prepare \
   --config examples/minimal-web/devlane.yaml \
   --cwd examples/minimal-web
 ```
@@ -53,7 +52,7 @@ If the adapter declares `ports`, `prepare` also allocates real host ports via th
 ## 5. Bring the lane up
 
 ```bash
-python -m devlane up \
+go run ./cmd/devlane up \
   --config examples/minimal-web/devlane.yaml \
   --cwd examples/minimal-web \
   --dry-run
@@ -67,7 +66,7 @@ For a real repo, scaffold an adapter from the repo's current shape:
 
 ```bash
 cd /path/to/your-repo
-python -m devlane init
+devlane init
 ```
 
 `init` detects whether the repo is containerized (compose file present), bare-metal (framework manifest, no compose), or CLI (neither), and writes a starter `devlane.yaml`. Edit the file to point generated outputs at whatever your repo currently creates by wrappers, shell scripts, or hand-edited `.env.local` flows.

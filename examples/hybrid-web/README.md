@@ -19,9 +19,9 @@ coordinated port numbers.
 ## Try it
 
 ```bash
-python -m devlane inspect --config examples/hybrid-web/devlane.yaml --cwd examples/hybrid-web --json
-python -m devlane prepare --config examples/hybrid-web/devlane.yaml --cwd examples/hybrid-web
-python -m devlane up --config examples/hybrid-web/devlane.yaml --cwd examples/hybrid-web --dry-run
+go run ./cmd/devlane inspect --config examples/hybrid-web/devlane.yaml --cwd examples/hybrid-web --json
+go run ./cmd/devlane prepare --config examples/hybrid-web/devlane.yaml --cwd examples/hybrid-web
+go run ./cmd/devlane up --config examples/hybrid-web/devlane.yaml --cwd examples/hybrid-web --dry-run
 ```
 
 `up` (without `--dry-run`) prints the bare-metal commands first, then runs

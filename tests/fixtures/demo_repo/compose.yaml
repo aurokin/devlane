@@ -1,5 +1,0 @@
-services:
-  web:
-    image: nginx:alpine
-    volumes:
-      - ./site:/usr/share/nginx/html:ro

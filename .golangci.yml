@@ -1,0 +1,40 @@
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gocognit
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+
+linters-settings:
+  gocognit:
+    min-complexity: 20
+  gocyclo:
+    min-complexity: 15
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: empty-block
+      - name: error-return
+      - name: error-strings
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: range
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: superfluous-else
+      - name: unreachable-code
+      - name: unused-parameter
+      - name: var-declaration

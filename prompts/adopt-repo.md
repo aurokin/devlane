@@ -47,8 +47,8 @@ Add a small declarative `devlane.yaml` to the target repo and make the shared to
 3. map those files into `outputs.generated`
 4. define lane naming, hostname, and Compose project patterns
 5. ask the repo owner which files belong in `worktree.seed` (credentials, `.env.secrets`, master keys — files that cannot be templated because they are per-developer or per-deploy). Declare them explicitly; no defaults.
-6. make `python -m devlane inspect --json` meaningful in the repo; check `ready` reflects allocation state accurately
-7. make `python -m devlane prepare` recreate the current generated local files
+6. make `devlane inspect --json` meaningful in the repo; check `ready` reflects allocation state accurately
+7. make `devlane prepare` recreate the current generated local files
 8. if the repo uses Compose, make `up` and `down` lane-aware
 9. if the repo has bare-metal dev commands (`npm run dev`, `bin/rails server`), declare them under `runtime.run.commands` so `devlane up` can print them — devlane never spawns bare processes
 10. update docs and examples

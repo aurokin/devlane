@@ -23,7 +23,7 @@ Read in this order unless you already know the area you are touching:
 
 Then branch by task:
 
-- **Core CLI or manifest work:** `docs/40-cli-contract.md`, `docs/50-adapter-schema.md`, `docs/60-manifest-contract.md`, then `src/devlane/`
+- **Core CLI or manifest work:** `docs/40-cli-contract.md`, `docs/50-adapter-schema.md`, `docs/60-manifest-contract.md`, then `cmd/devlane/` and `internal/`
 - **Port or host catalog work:** `docs/65-host-catalog.md`, then `docs/80-agent-playbook.md` for the conflict-handling protocol
 - **Runtime patterns (containerized or bare-metal):** `docs/70-container-workflow.md` and `docs/75-baremetal-workflow.md`, then the matching examples under `examples/`
 - **Repo adoption work:** `docs/90-example-integrations.md`, then `examples/agentchat/` or `examples/wowhead_cli/`
@@ -96,12 +96,13 @@ Phase 4 (proxy integration) and Phase 5 (stable deploy) have been **cut from the
 From the repo root:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-pytest
-python -m devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
-python -m devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
+go mod download
+go tool gofumpt -w .
+go tool goimports -w ./cmd ./internal
+go tool golangci-lint run
+go tool gotestsum -- ./...
+go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
+go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
 ```
 
 ## What to avoid
