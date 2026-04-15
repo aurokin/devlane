@@ -48,7 +48,7 @@ The tool pays for itself in "agent never asks 'what port is this on again'" mome
 You do not need to adopt all of devlane at once.
 
 - **Minimum useful adoption:** an adapter, `inspect --json` as the agent contract, and `prepare` generating the files the repo currently hand-manages. This alone eliminates most cross-agent confusion.
-- **Full adoption:** add `ports`, let the host catalog coordinate allocation across every repo on the host, and use `worktree create` / `worktree remove` to let the tool own lane lifecycle end-to-end.
+- **Full adoption:** add `ports`, let the host catalog coordinate allocation across every repo on the host, and use `worktree create` / `worktree remove` to let the tool own lane lifecycle end-to-end when the adapter lives at the checkout root.
 
 Many teams sit at the minimum level for a while and expand when they hit the next coordination problem. That is the intended path.
 

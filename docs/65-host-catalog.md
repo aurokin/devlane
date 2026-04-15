@@ -68,6 +68,8 @@ Each allocation answers "which port does this `(app, repoPath, service)` tuple o
 
 `mode`, `lane`, and `branch` are stored as metadata for operator output and convenience selection. They are refreshed on `prepare`, but they are not part of the durable identity key for dev-lane allocations.
 
+`repoPath` is the absolute Git worktree root for the checkout, not the adapter directory. For subtree adapters in monorepos, multiple adapters may share the same `repoPath` while still producing different manifests from different `configPath` values.
+
 The catalog is tool-owned. Humans and agents should not hand-edit it. Use `devlane host gc` and `devlane reassign` to change it.
 
 ## Concurrency model
@@ -193,19 +195,21 @@ If that lane is compose-backed, stop it in its checkout first:
 
   (in /home/auro/code/myapp-feature-x)
   devlane down
-  devlane reassign web
+  devlane reassign web --force
   devlane prepare
 
 If that lane is pure bare-metal, stop the listening process outside devlane, then run:
 
   (in /home/auro/code/myapp-feature-x)
-  devlane reassign web
+  devlane reassign web --force
   devlane prepare
 
 Then retry prepare here.
 ```
 
 Hard error with a runtime-shaped recipe. Devlane does not kill foreign processes, and bare-metal `down` remains a no-op.
+
+`--force` is required in this repair flow. Once the conflicting lane has been stopped, a plain `devlane reassign <service>` would probe the now-free current port, decide nothing is wrong, and no-op. Stable would still collide on the next `prepare`. `--force` is the explicit "move this offline lane aside now" action.
 
 ## Stickiness guarantee
 
@@ -305,7 +309,7 @@ The third rule is the repo-identity drift check. It is intentionally based on th
 
 ### Scoped cleanup for worktree removal
 
-`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. By default the command resolves `<lane>` to the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`. If that path is missing because the worktree was moved or renamed manually, the command fails and requires `--path <worktree>` rather than guessing from mutable lane metadata or catalog rows. After the worktree is removed, devlane deletes only allocations whose `(app, repoPath)` match that removed worktree. It does not scan unrelated repos, it does not remove sibling worktrees for the same app, and it does not invoke `host gc`.
+`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. Phase 3 worktree commands are supported only when the active adapter lives at the Git worktree root (`adapterRoot == repoRoot`); subtree adapters in monorepos are out of scope there. By default the command resolves `<lane>` to the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`. If that path is missing because the worktree was moved or renamed manually, the command fails and requires `--path <worktree>` rather than guessing from mutable lane metadata or catalog rows. After the worktree is removed, devlane deletes only allocations whose `(app, repoPath)` match that removed worktree. It does not scan unrelated repos, it does not remove sibling worktrees for the same app, and it does not invoke `host gc`.
 
 If `git worktree remove` succeeds but this scoped cleanup fails, the recovery path is the ordinary stale-entry sweep for that app: `devlane host gc --app <app>`. The removed `repoPath` now satisfies the normal stale-entry rules, so `host gc` is the deterministic cleanup tool for that partial-failure case.
 

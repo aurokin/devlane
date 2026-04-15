@@ -46,17 +46,20 @@ The scaffold is intentionally small but useful:
 
 ## What Phase 2 adds
 
-Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devlane/catalog.json` that coordinates host-port allocations across every `devlane`-managed repo on the machine. It adds:
+Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devlane/catalog.json` that makes the port-related contract authoritative across every `devlane`-managed repo on the machine. It adds:
 
 - `ports` declarations in the adapter (with optional `health_path`)
 - `ports` (as `{port, allocated, healthUrl?}` objects) and a top-level `ready` flag in the manifest, plus `DEVLANE_PORT_*` env
 - sticky, per-lane allocation with stable ports treated as fixtures (strict-fail on collision — see `docs/65-host-catalog.md`)
+- durable allocation identity keyed by `(app, repoPath, service)` with `lane` / `mode` / `branch` refreshed as metadata
 - concurrent-safe catalog writes via `fcntl.flock` + atomic rename (POSIX-first)
 - `devlane port <service>` with `--verbose` and `--probe` (TCP probing on both `0.0.0.0` and `::`)
-- `devlane reassign <service>` (idempotent, scoped, supports `--lane`)
+- `devlane reassign <service>` (idempotent, scoped, supports `--lane` and `--force`)
 - `devlane host status`, `host doctor`, `host gc`
 
 The docs and schemas describe the Phase 2 target state. See `docs/65-host-catalog.md` and `docs/100-implementation-plan.md`.
+
+Phase 1 remains intentionally smaller: `inspect`, `prepare`, generated outputs, and lifecycle behavior land before host-catalog-backed `ports`, `ready`, `reassign`, and `host *` commands become acceptance requirements.
 
 Phase 3 adds minimal worktree lifecycle (`create` + `remove`, with adapter-declared `worktree.seed` copying credentials). That is the last planned phase — devlane stops there rather than drifting into proxy integration or deploy mechanics. See `docs/00-principles.md` for why.
 
@@ -129,7 +132,8 @@ Keep phase 1 narrow and dependable:
 2. make `inspect --json` authoritative
 3. make `prepare` generate the files that repo currently hand-manages
 4. make `up` and `down` lane-aware via Compose project names
-5. delay worktree create/remove until the manifest and adapter contracts feel stable
+5. keep host-catalog-backed `ports` / `ready` semantics and conflict repair in Phase 2
+6. delay worktree create/remove until the manifest and adapter contracts feel stable
 
 ## Why this is docs-first
 

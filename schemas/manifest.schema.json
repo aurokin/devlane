@@ -53,7 +53,8 @@
           "type": "string"
         },
         "slug": {
-          "type": "string"
+          "type": "string",
+          "description": "Deterministic lane slug. See docs/20-concepts.md for the contract algorithm used for lane-derived slugs."
         },
         "mode": {
           "type": "string",
@@ -69,10 +70,12 @@
           "type": "string"
         },
         "repoRoot": {
-          "type": "string"
+          "type": "string",
+          "description": "Absolute Git worktree root for the current checkout."
         },
         "configPath": {
-          "type": "string"
+          "type": "string",
+          "description": "Absolute path to the active devlane.yaml. adapterRoot is the directory containing this file."
         }
       }
     },
@@ -149,7 +152,7 @@
           },
           "allocated": {
             "type": "boolean",
-            "description": "True when the (app, lane, service) tuple has an entry in the host catalog. False when inspect is computing the manifest before prepare has ever run."
+            "description": "True when the durable (app, repoPath, service) tuple has an entry in the host catalog. lane/mode/branch are metadata, not the identity key. False when inspect is computing the manifest before prepare has ever run."
           },
           "healthUrl": {
             "type": [

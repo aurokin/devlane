@@ -8,7 +8,7 @@ When asked to work inside a repo that uses `devlane`, agents should prefer this 
 
 1. `inspect --json`
 2. check `manifest.ready`
-3. `prepare` when `ready: false`, and also whenever the task depends on current generated outputs or `.devlane/compose.env`
+3. `prepare` when `ready: false`, and also whenever the task depends on current generated outputs or `.devlane/compose.env`. `up` never promotes provisional ports for you
 4. `up` or `status`
 
 That order keeps discovery explicit and reproducible.
@@ -36,6 +36,8 @@ It does not mean:
 For "is the port actually bindable": `devlane port <svc> --probe`. For "is the lane running": `devlane status`. For health: hit `manifest.ports.<svc>.healthUrl` yourself.
 
 If your task depends on generated files or `.devlane/compose.env`, do not use `ready` as a shortcut for "prepare definitely ran." Run `prepare`.
+
+The same rule applies before `up`: if the adapter declares `ports`, do not rely on provisional `inspect` values. `up` does not commit them; `prepare` does.
 
 ## What `devlane status` tells you (and how bare-metal differs from compose)
 
@@ -90,7 +92,7 @@ A repo adopting `devlane` only needs to answer a small number of questions:
 - if the host has a proxy or DNS, what hostname pattern should lanes use (optional)?
 - which files (credentials, `.env.local`, etc.) should be copied into a new worktree (optional, powers `devlane worktree create`)?
 
-If you use `devlane init --from <path>`, treat the copied adapter as a draft. Relative paths and repo-specific identifiers are preserved literally; review `app`, `compose_files`, template paths, output paths, and `worktree.seed` before assuming the target repo is correctly wired.
+If you use `devlane init --from <path>`, treat the copied adapter as a draft. Relative paths and repo-specific identifiers are preserved literally; review `app`, `lane.host_patterns`, `compose_files`, `outputs.manifest_path`, `outputs.compose_env_path`, `outputs.generated[].template`, `outputs.generated[].destination`, and `worktree.seed` before assuming the target repo is correctly wired.
 
 ## Discovery: hostnames vs ports
 
@@ -130,6 +132,8 @@ If `prepare` itself fails with a stable-fixture collision (see `65-host-catalog.
 ## Worktree lifecycle (Phase 3)
 
 When Phase 3 lands, agents should prefer `devlane worktree create <lane>` over `git worktree add` directly. The devlane command does three things in one:
+
+This applies only when the active adapter lives at the Git worktree root (`adapterRoot == repoRoot`). Subtree adapters in monorepos remain supported for in-place commands, but `worktree create` / `worktree remove` are out of scope for them and should fail clearly.
 
 1. `git worktree add` at the conventional sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`, creating a new branch named `<lane>` from the current `HEAD`
 2. copy every path listed in the adapter's `worktree.seed` from the source checkout (credentials, `.env.local`, secret keys) — skipping any that are also in `outputs.generated`, because `prepare` will render those

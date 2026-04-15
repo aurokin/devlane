@@ -50,7 +50,7 @@ See `65-host-catalog.md` for the full allocation model, collision scenarios, and
 
 ## Optional: `runtime.run` for `devlane up` guidance
 
-`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits.
+`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits. It never implicitly runs `prepare`. In Phase 2, if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing anything and points the caller at `prepare`.
 
 ```yaml
 runtime:
@@ -111,7 +111,12 @@ For stricter bindability checks the `--probe` machinery is still available via `
 
 ### Template scope
 
-`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates: top-level manifest groups, flattened `ports.<name>`, and `env.<KEY>`. New variables are added to both scopes together.
+`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates:
+
+- **Phase 1** — top-level Phase 1 manifest groups plus `env.<KEY>`. `ready` and `ports.<name>` are not available yet; referencing them is a render error.
+- **Phase 2** — adds top-level `ready` plus flattened `ports.<name>` values.
+
+New variables are added to both scopes together.
 
 ## What `prepare` produces
 

@@ -22,12 +22,14 @@ Use this as the practical done bar. Read it in three layers:
 - docs and schemas agree
 - examples still reflect current contracts
 - prompt templates remain usable
-- the manifest contains everything an agent needs for discovery (ports with allocation state, top-level `ready`, hostnames when declared, generated file paths)
+- the manifest contract contains everything an agent needs for discovery for the active phase: Phase 1 covers lane identity, paths, network fields, compose data, and generated file paths; Phase 2 adds ports with allocation state and top-level `ready`
 - agents consistently read `inspect --json` rather than the on-disk `.devlane/manifest.json`
-- the agent playbook tells agents to run `prepare` when generated outputs or compose env are needed, not only when `ready` is false
+- the agent playbook tells agents to run `prepare` when generated outputs or compose env are needed, not only when Phase 2 `ready` is false
 - docs consistently treat dev-lane catalog identity as `(app, repoPath, service)` with `lane` / `mode` / `branch` as metadata
 
 ## Phase 1 acceptance
+
+Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Host-catalog-backed `ports`, `ready`, provisional allocation, `port`, `reassign`, and `host *` commands are accepted in Phase 2 below.
 
 ### Init
 
@@ -42,92 +44,88 @@ Use this as the practical done bar. Read it in three layers:
 - `devlane init --list` prints detected candidates without writing anything
 - `devlane init --template <name>` overrides detection and uses a named starter template (`containerized-web`, `baremetal-web`, `hybrid-web`, `cli`)
 - `devlane init --from <path>` copies an existing adapter as the starting point
-- `devlane init --from <path>` copies the source adapter literally; it does not re-root relative paths or rewrite `app`, `host_patterns`, `compose_files`, template paths, or `worktree.seed`
+- `devlane init --from <path>` validates the source adapter against the current schema before writing anything
+- `devlane init --from <path>` copies the source adapter literally; it does not re-root relative paths or rewrite `app`, `lane.host_patterns`, `runtime.compose_files`, template paths, or `worktree.seed`
 - `devlane init --from <path>` prints a post-copy review checklist for repo-coupled fields and warns when referenced source-relative inputs such as compose files or templates do not exist in the target repo
 - `devlane init` refuses to overwrite an existing `devlane.yaml` unless `--force` is passed
 - `devlane init` prompts for confirmation when stdin is a TTY; `--yes` / `--all` / a non-TTY stdin skips the prompt
 - when multiple candidates are found and prompting is unavailable, `devlane init` fails unless `--all` or `--app <path>` is provided; it never guesses
 - `devlane init` prints its detection reasoning (e.g., `Detected: containerized (found compose.yaml)`) so the user knows why it picked what it picked
-- `devlane init` scaffolds `host_patterns` as a commented-out block in every starter template; users opt in by uncommenting
+- `devlane init` scaffolds `lane.host_patterns` as a commented-out block in every starter template; users opt in by uncommenting
 - `devlane init` scaffolds `worktree.seed` as a commented-out block with placeholder examples; users add their own paths explicitly
 - `devlane init` never scaffolds `runtime.run.commands` entries that would be executed — there is no execute mode; all bare-metal commands are print-only
 - Ambiguous detection defaults to CLI with a clear notice pointing at `--template baremetal-web` or `--template containerized-web`
 - hybrid mode is never auto-detected from overlapping filesystem signals alone; when `init` sees both compose and bare-metal hints, it prints a notice pointing at `--template hybrid-web`
 - `devlane prepare` on a directory with no `devlane.yaml` prints a pointer to `devlane init`
-- any future proxy-signal detection in `init` is suggestion-only; it never silently infers `host_patterns` or hostname ownership into the adapter contract
+- any future proxy-signal detection in `init` is suggestion-only; it never silently infers `lane.host_patterns` or hostname ownership into the adapter contract
 
 ### Core contract
 
 - `devlane.yaml` can be loaded from cwd or an explicit path
 - `prepare`/`inspect`/`up` walk up from cwd to find the nearest `devlane.yaml`
-- `inspect --json` always recomputes from adapter + catalog; never reads `.devlane/manifest.json`
-- `inspect --json` works before `prepare` has ever run; emits `ready: false` and `allocated: false` for pre-prepare ports
-- for pre-prepare dev lanes, `inspect --json` computes provisional `ports.<name>.port` values against the live catalog using the current allocator; these values are not reserved and may still change before `prepare`
-- for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port`
-- `ready` remains an allocation-state signal only; it is not a proxy for successful repo-local writes or "prepare definitely ran"
+- `inspect --json` always recomputes from live inputs; it never reads `.devlane/manifest.json`
 - `inspect --json` emits deterministic JSON
-- in-place branch switching inside an existing checkout is acceptable; it updates manifest metadata but does not create host-catalog drift by itself
-- lane names are stable and slugified
+- docs define the path anchors once and use them consistently: `repoRoot` = Git worktree root, `adapterRoot` = directory containing `devlane.yaml`, `repoPath` = catalog identity path for the checkout root
+- lane names are stable and slugified according to the documented slug algorithm
 - stable vs dev mode is explicit or reproducible
 - paths, hostnames, and project names derive from the adapter
-- `host_patterns` is optional; the manifest emits `publicHost: null` when omitted
+- `lane.host_patterns` is optional; the manifest emits `publicHost: null` when omitted
 
 ### Manifest shape
 
-- top-level fields are exactly: `schema`, `app`, `kind`, `ready`, `lane`, `paths`, `network`, `ports`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
-- `ready` is `true` iff every declared port has `allocated: true`; `true` when the adapter declares no ports
-- `lane` carries `name`, `slug`, `mode`, `stable`, `branch`, `repoRoot`, `configPath` (the old top-level `repo` fields merged in)
-- `paths.composeEnv` is present only when the adapter declares `compose_files` — the key is omitted entirely otherwise, not set to `null`
+- Phase 1 manifest shape is explicit for the non-catalog-backed surface: `schema`, `app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
+- `lane` carries `name`, `slug`, `mode`, `stable`, `branch`, `repoRoot`, `configPath`
+- `paths.composeEnv` is present only when the adapter declares `runtime.compose_files` — the key is omitted entirely otherwise, not set to `null`
 - `network.publicUrl` is `http://<publicHost>` when `publicHost` is set, `null` otherwise
 - env is a *projection* computed at write time, not stored in the manifest; consumers read it from `.devlane/compose.env` or the template `env.*` scope
-- template scope flattens `ports.<name>` to the integer port number (not the `{port, allocated, healthUrl}` object); templates use `{{ports.web}}` to get `3100`
+- env projection uses empty strings, not missing keys, for unavailable optional values such as `DEVLANE_COMPOSE_ENV`, `DEVLANE_PUBLIC_HOST`, and `DEVLANE_PUBLIC_URL`
+- Phase 1 template / printed-command scope excludes `ready` and `ports.<name>`; referencing either before Phase 2 is a render error
 
 ### Generated outputs
 
 - `prepare` writes the manifest
-- `prepare` writes `.devlane/compose.env` when the adapter declares `compose_files`, omits it otherwise
+- `prepare` writes `.devlane/compose.env` when the adapter declares `runtime.compose_files`, omits it otherwise
 - `prepare` renders declared templates
 - generated directories are created automatically
 - missing template fields fail loudly
 - templates with undefined variables fail loudly (no silent empty string)
-- generated destinations must resolve inside the repo root; absolute paths outside the repo are refused
+- relative adapter paths resolve from `adapterRoot` and must remain inside `repoRoot`
+- generated destinations must resolve inside `repoRoot`; absolute paths outside the checkout are refused
 - `prepare` tracks a sidecar hash per generated file under `.devlane/`
 - when an on-disk generated file has been hand-edited, `prepare` prints a one-line warning and writes anyway
 - first `prepare` with no sidecar hash quietly overwrites existing files with a one-line notice
-- `prepare` validates all repo-local writes that can fail before catalog work begins, computes the catalog mutation under lock, stages repo-local writes to temp files, promotes them in deterministic order, and publishes the catalog only after those promotions succeed
-- a failed `prepare` or `reassign` write phase does not publish new catalog state or make `inspect --json` look more prepared than the last successful publish; existing `ready` state may still reflect prior allocations because `ready` is not a local-write-freshness bit
-- if a repo-local promotion fails after earlier outputs were already promoted, the command reports the partial local state explicitly and leaves the catalog unpublished
+- `prepare` validates all repo-local writes that can fail before writing, stages repo-local writes to temp files, promotes them in deterministic order, and reports partial local state explicitly if a late promotion fails
 
 ### Compose lifecycle
 
 - Compose commands include the lane-specific project name
-- Compose files are resolved relative to the adapter location
+- Compose files are resolved relative to `adapterRoot`
 - default profiles are included
 - `devlane up` in containerized mode runs `docker compose up`
 - `devlane down` in containerized mode runs `docker compose down`
 - `devlane status` in containerized mode runs `docker compose ps`
 - `--dry-run` shows the exact command without running it
 - `status` works without mutating state
+- successful `status` reads exit `0`; non-zero is reserved for invocation, config, or subprocess errors
 
 ### Bare-metal lifecycle
 
 - `devlane up` is a no-op for bare-metal adapters without `runtime.run.commands`, printing a one-line hint
 - `devlane up` **prints** rendered commands when `runtime.run.commands` is declared — never spawns them
+- `devlane up` never implicitly runs `prepare`
 - there is no `runtime.run.mode` field; the schema rejects it
 - `devlane down` is always a no-op for bare-metal (no process tracking)
-- `devlane status` for bare-metal prints the manifest-derived summary and reports each declared port as `bound`, `free`, or `unallocated`
-- `devlane status` bare-metal output never claims the process is "ours", "healthy", or "running" — only that a port is bound
-- pre-prepare bare-metal `status` does not probe provisional candidate ports; it labels them `unallocated` and points the user at `prepare`
-- `runtime.run.commands[].command` renders with the same template scope as `outputs.generated`: top-level manifest groups, flattened `ports.<name>`, and `env.<KEY>`
+- `devlane status` for bare-metal prints the manifest-derived summary in Phase 1; Phase 2 extends it with `bound` / `free` / `unallocated` host-port results when the adapter declares `ports`
+- `runtime.run.commands[].command` renders with the same template scope as `outputs.generated`
+- once Phase 2 lands, if the adapter declares `ports` and any declared service is still `allocated: false`, `devlane up` fails before printing anything and points the user at `prepare`
 
 ### Hybrid lifecycle
 
-- When an adapter declares both `compose_files` and `runtime.run.commands`, `devlane up` prints the bare-metal commands first, then runs `docker compose up`
+- When an adapter declares both `runtime.compose_files` and `runtime.run.commands`, `devlane up` prints the bare-metal commands first, then runs `docker compose up`
 - If compose fails in hybrid mode, the printed bare-metal commands remain visible in the terminal output above the error
 - `devlane up` exit code in hybrid mode follows compose's exit code
 - `devlane down` in hybrid mode runs `docker compose down`; bare-metal processes are the user's to stop
-- `devlane status` in hybrid mode emits both halves: compose `ps` output for the supervised services, plus `bound` / `free` / `unallocated` results for every declared host port; it does not infer per-port substrate ownership from the current adapter shape alone
-- pre-prepare hybrid `status` does not probe provisional host-port candidates; those services remain `unallocated` until `prepare` commits them
+- `devlane status` in hybrid mode emits compose `ps` output plus the manifest-derived bare-metal summary in Phase 1; Phase 2 extends it with `bound` / `free` / `unallocated` results for declared host ports without inferring per-port substrate ownership
 - `examples/hybrid-web/` exercises the pattern end to end (compose sidecar + `runtime.run.commands` + `kind: hybrid`)
 
 ### Doctor
@@ -141,9 +139,9 @@ Use this as the practical done bar. Read it in three layers:
 
 ### Validation strictness
 
-- schema-load errors fail before `prepare` logic runs: unknown schema version, invalid `kind`, duplicate `ports[].name`, `host_patterns.dev` missing `{lane}`, `host_patterns.stable == host_patterns.dev`, missing `outputs.manifest_path`, presence of a `runtime.run.mode` field (removed; schema rejects it)
-- `prepare`-time errors fail loudly: missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file, stable fixture in `reserved`, pool exhaustion
-- warnings do not block: adapter `default` changed since last allocation, `default` outside `port_range` (noted in `inspect --verbose`), `kind: web` with no `ports` and no `compose_files`
+- schema-load errors fail before `prepare` logic runs: unknown schema version, invalid `kind`, duplicate `ports[].name`, `lane.host_patterns.dev` missing `{lane}`, `lane.host_patterns.stable == lane.host_patterns.dev`, missing `outputs.manifest_path`, presence of a `runtime.run.mode` field (removed; schema rejects it)
+- `prepare`-time errors fail loudly: missing template file, absolute destination outside repo, undefined template variable, out-of-scope template variable, missing compose file
+- warnings do not block: `kind: web` with no `ports` and no `runtime.compose_files`
 
 ## Phase 2 acceptance
 
@@ -159,12 +157,17 @@ Use this as the practical done bar. Read it in three layers:
 - allocation order for multiple services is adapter declaration order, with earlier selections held in memory while later services are resolved
 - allocations are sticky across `up`/`down`/`up` cycles
 - `prepare` does not re-probe existing allocations
+- `inspect --json` always recomputes from adapter + catalog once Phase 2 lands; it never reads `.devlane/manifest.json`
+- `inspect --json` works before `prepare` has ever run; emits `ready: false` and `allocated: false` for pre-prepare ports
+- for pre-prepare dev lanes, `inspect --json` computes provisional `ports.<name>.port` values against the live catalog using the current allocator; these values are not reserved and may still change before `prepare`
+- for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port`
+- `ready` remains an allocation-state signal only; it is not a proxy for successful repo-local writes or "prepare definitely ran"
 - `down` does not modify the catalog
 - stable lanes treat `stable_port` as a fixture when declared, otherwise `default`
 - stable-lane `prepare` fails loudly on any collision (no silent fallback to pool)
 - stable-vs-stable collision prints both adapter paths; no command to paste
 - stable-vs-offline-dev collision prints a ready-to-paste `reassign --lane ... --force && prepare`
-- stable-vs-bound-dev collision prints a runtime-shaped recipe: compose-backed lanes may use `devlane down`, but pure bare-metal lanes are told to stop their own process outside devlane before `reassign` / `prepare`
+- stable-vs-bound-dev collision prints a runtime-shaped recipe: compose-backed lanes may use `devlane down`, but pure bare-metal lanes are told to stop their own process outside devlane before `reassign --force` / `prepare`; plain `reassign` would no-op once the old port is free
 - `devlane port <service>` prints a plain number by default
 - `devlane port <service>` fails clearly when the service has no assigned allocation yet and points at `inspect --json` for the current provisional candidate or `prepare` to commit one
 - `devlane port <service> --probe` exits non-zero when the assigned port is not bindable
@@ -172,9 +175,16 @@ Use this as the practical done bar. Read it in three layers:
 - `devlane reassign <service>` is a no-op when the current port is free unless `--force` is passed
 - `devlane reassign <service>` only moves the requested service
 - `devlane reassign <service> --force` intentionally moves an offline checkout aside even when its current port is free
+- `prepare` validates repo-local failures before catalog work, computes catalog mutations under lock, stages repo-local writes to temp files, promotes them in deterministic order, and publishes the catalog only after those promotions succeed
+- a failed `prepare` or `reassign` write phase does not publish new catalog state or make `inspect --json` look more prepared than the last successful publish; existing `ready` state may still reflect prior allocations because `ready` is not a local-write-freshness bit
+- if a repo-local promotion fails after earlier outputs were already promoted, the command reports the partial local state explicitly and leaves the catalog unpublished
 - `devlane reassign <service> --lane <name>` can target another checkout of the same app by lane metadata when repo context is supplied by the current repo or by `--config` / `--cwd`
 - if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching selector row exists; any multiple match fails with a clear ambiguity error
-- `devlane host status` lists every allocation on the host
+- top-level manifest fields are exactly: `schema`, `app`, `kind`, `ready`, `lane`, `paths`, `network`, `ports`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
+- `ready` is `true` iff every declared port has `allocated: true`; `true` when the adapter declares no ports
+- template scope flattens `ports.<name>` to the integer port number (not the `{port, allocated, healthUrl}` object); templates use `{{ports.web}}` to get `3100`
+- `devlane host status` lists every allocation on the host in deterministic order (`app`, `repoPath`, `service`)
+- successful `host status` reads exit `0`; non-zero is reserved for invocation, config, or read failures
 - `devlane host doctor` is read-only and does not mutate the catalog
 - `devlane host doctor` probes every allocation and reports `bound` / `free` status for operator context, missing repos, missing service declarations, app/repo-path drift, and duplicate catalog claims
 - `devlane host doctor` does not treat a singly claimed bound port as an error by itself; host-wide probing cannot prove ownership for bare-metal lanes
@@ -192,6 +202,9 @@ Use this as the practical done bar. Read it in three layers:
 - stable-lane `prepare` fails when its fixture (`stable_port` or `default`) is in effective `reserved`
 - allocations from the pool stay within `port_range`
 - adapter-declared `default` and `stable_port` are honored even when they sit outside `port_range`
+- once Phase 2 lands, bare-metal `status` reports `bound`, `free`, or `unallocated` for declared services without claiming process ownership, and pre-prepare services stay `unallocated` rather than probing provisional candidates
+- once Phase 2 lands, hybrid `status` adds host-port `bound` / `free` / `unallocated` results alongside compose `ps` output without inferring per-port substrate ownership
+- once Phase 2 lands, `devlane up` never commits provisional ports; it fails clearly and points at `prepare` when any declared port is still unallocated
 
 ## Phase 3 acceptance
 
@@ -199,11 +212,14 @@ Use this as the practical done bar. Read it in three layers:
 
 - `devlane worktree create <lane>` runs `git worktree add` at the sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>`
 - `worktree create` creates a new branch named raw `<lane>` from the source checkout's current `HEAD`
-- `worktree create` requires `<lane>` to be a valid new local Git branch name and to slugify to a non-empty `<lane-slug>`
+- `worktree create` requires `<lane>` to be a valid new local Git branch name and to slugify to a non-empty `<lane-slug>` according to the documented slug algorithm
 - `worktree create` fails rather than guessing when the target path already exists, the target branch already exists, or a distinct raw lane name would collide on the same `<lane-slug>`
 - `worktree create` rejects `<lane>` equal to the adapter's `stable_name`; the command is for new dev lanes only
+- `worktree create` / `worktree remove` are supported only when the active adapter lives at the Git worktree root (`adapterRoot == repoRoot`); subtree adapters in monorepos fail clearly and remain manual `git worktree` territory
 - `worktree create` copies every path listed in `worktree.seed` from the source checkout into the new worktree, **before** `prepare` runs
 - `worktree.seed` directories are copied recursively
+- `worktree.seed` entries are `adapterRoot`-relative; absolute paths are rejected
+- normalized `worktree.seed` source paths may not escape the source `repoRoot`, and copy destinations may not escape the target worktree root
 - `worktree.seed` entries that are missing in the source checkout warn and continue — they do not fail the command
 - `worktree.seed` entries that also appear in `outputs.generated[].destination` are skipped with a one-line notice (prepare will render them)
 - `worktree.seed` symlinks are recreated as symlinks; devlane does not dereference or rewrite their targets

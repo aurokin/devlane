@@ -23,7 +23,7 @@ When the host has no proxy, containerized adapters still work — they just bind
 
 ## Lifecycle commands
 
-- `devlane up` — runs `docker compose -p <project> -f <files> --env-file .devlane/compose.env --profile <profiles> up`. Compose does the supervision.
+- `devlane up` — runs `docker compose -p <project> -f <files> --env-file .devlane/compose.env --profile <profiles> up`. Compose does the supervision. In Phase 2, if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before running compose and points the caller at `prepare`.
 - `devlane down` — runs `docker compose -p <project> ... down`. Does **not** release catalog ports (see `65-host-catalog.md` on stickiness).
 - `devlane status` — runs `docker compose ps`.
 - `devlane up --dry-run` — prints the command instead of running it.
@@ -51,8 +51,8 @@ Devlane does not talk to the proxy directly, ever. It emits `DEVLANE_PUBLIC_HOST
 When the compose pattern is in use, `prepare` writes `.devlane/compose.env` with:
 
 - `DEVLANE_COMPOSE_PROJECT` — the rendered project name
-- `DEVLANE_PUBLIC_HOST` — the rendered hostname (when `host_patterns` is declared; absent otherwise)
-- `DEVLANE_PUBLIC_URL` — the full URL (when `host_patterns` is declared; absent otherwise)
+- `DEVLANE_PUBLIC_HOST` — the rendered hostname (empty string when `host_patterns` is omitted)
+- `DEVLANE_PUBLIC_URL` — the full URL (empty string when `host_patterns` is omitted)
 - `DEVLANE_PORT_<NAME>` — allocated ports for any declared `ports[]` services
 - any entries from `runtime.env`
 
@@ -92,6 +92,8 @@ An adapter can declare **both** `compose_files` and `runtime.run.commands`. Comm
 2. Run `docker compose up` for the supervised services.
 
 If compose fails, the bare-metal plan is still visible above the error — the user can fix compose, scroll up, paste the commands, and move on. Exit code follows compose.
+
+If the adapter declares `ports`, Phase 2 applies the same allocation gate here as everywhere else: `up` fails before printing commands or running compose while any declared service is still `allocated: false`.
 
 `devlane down` in hybrid mode runs `docker compose down`. The bare-metal processes are the user's to stop.
 

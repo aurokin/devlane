@@ -67,15 +67,21 @@ outputs:
 
 ## Fields
 
+## Path anchor rule
+
+Relative adapter paths resolve from `adapterRoot`, the directory containing `devlane.yaml`. They must remain inside `repoRoot`, the Git worktree root for the checkout. `lane.repoRoot` in the manifest points at `repoRoot`; `filepath.Dir(lane.configPath)` is the corresponding `adapterRoot`.
+
 ## `init --from` review rule
 
-When you scaffold from another adapter with `devlane init --from <path>`, devlane copies the YAML as-is. It does not attempt to rewrite:
+When you scaffold from another adapter with `devlane init --from <path>`, devlane first validates the source adapter against the current schema and then copies the YAML as-is. It does not attempt to rewrite:
 
 - `app`
 - `lane.host_patterns`
 - `runtime.compose_files`
+- `outputs.manifest_path`
+- `outputs.compose_env_path`
 - `outputs.generated[].template`
-- `outputs.*_path`
+- `outputs.generated[].destination`
 - `worktree.seed`
 
 That keeps the command deterministic and repo-agnostic. It also means imported adapters may contain paths or identifiers that do not make sense in the target repo. After copying, review those fields explicitly before treating the new adapter as adopted.
@@ -106,7 +112,7 @@ When `host_patterns` is omitted:
 
 ### `runtime`
 
-- `compose_files` — Compose files relative to repo root
+- `compose_files` — Compose files relative to `adapterRoot`
 - `default_profiles` — profiles enabled by default
 - `optional_profiles` — known optional profiles
 - `env` — extra env values that should be projected into Compose and exposed to templates / bare-metal command rendering as `env.<KEY>`
@@ -133,7 +139,12 @@ runtime:
 - In a hybrid adapter (both `compose_files` and `runtime.run.commands`), `up` prints these commands first, then runs `docker compose up`. If compose fails, the bare-metal plan is still visible.
 - `devlane down` is always a no-op for bare-metal. Users stop their own processes.
 
-Commands accept `{{...}}` templating. The scope is the same as `outputs.generated` templates: top-level manifest groups (`app`, `kind`, `ready`, `lane`, `paths`, `network`, `compose`, `outputs`), flattened `ports.<name>`, and `env.<KEY>`. New variables are added to both scopes together.
+Commands accept `{{...}}` templating. The scope is the same as `outputs.generated` templates:
+
+- **Phase 1** — top-level Phase 1 manifest groups (`app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs`) plus `env.<KEY>`. `ready` and `ports.<name>` are not available yet; referencing them is a render error.
+- **Phase 2** — adds top-level `ready` plus flattened `ports.<name>` values. `ports.<name>` resolves to the integer port number, not the `{port, allocated, healthUrl}` object.
+
+New variables are added to both scopes together.
 
 ### `ports`
 
@@ -175,13 +186,15 @@ worktree:
     - config/credentials/
 ```
 
-- `seed` — explicit list of paths (relative to repo root) copied from the source checkout into a new worktree when `devlane worktree create` runs, **before `prepare`**. Directories are copied recursively. Missing source files warn and continue rather than failing.
+- `seed` — explicit list of paths (relative to `adapterRoot`) copied from the source checkout into a new worktree when `devlane worktree create` runs, **before `prepare`**. Directories are copied recursively. Absolute paths are rejected. Normalized paths may not escape `repoRoot`. Missing source files warn and continue rather than failing.
 - symlinks are recreated as symlinks. Devlane does not dereference them or rewrite their targets.
-- existing destination paths in the new worktree are overwritten for explicit seed entries, except when the path is also a generated output and therefore skipped.
+- existing destination paths in the new worktree are overwritten for explicit seed entries, except when the path is also a generated output and therefore skipped. Copy destinations must remain inside the target worktree root.
 - regular-file mode bits are preserved best-effort; ownership is not preserved.
 - The full list of copied paths is printed on completion, so the user can see exactly which credentials just moved.
 
 There is no default seed list. Devlane does not guess which files are sensitive or which secrets should follow a worktree. Each adapter declares its own list, explicitly. See principle #6 in `00-principles.md`.
+
+Phase 3 worktree commands are supported only when `adapterRoot == repoRoot`. Subtree adapters in monorepos are still valid for in-place commands such as `inspect`, `prepare`, `up`, and `status`, but `worktree create` / `worktree remove` are out of scope for them.
 
 ### Seed vs generated — two different categories of file
 
@@ -198,7 +211,7 @@ If a path *does* appear in both `worktree.seed` and `outputs.generated[].destina
 
 - `manifest_path` — where to write the manifest
 - `compose_env_path` — where to write the Compose env file. Required when `runtime.compose_files` is declared; omit otherwise.
-- `generated` — files rendered from templates. `destination` must resolve inside the repo root; absolute paths outside the repo are refused at prepare time.
+- `generated` — files rendered from templates. `template`, `manifest_path`, `compose_env_path`, and `destination` are resolved relative to `adapterRoot`. Destinations must remain inside `repoRoot`; absolute paths outside the checkout are refused at prepare time.
 
 Generated files are tool-owned. `prepare` tracks a sidecar hash under `.devlane/` for each generated destination. If the on-disk file has been hand-edited since the last `prepare`, the tool prints a one-line warning and writes anyway. On first `prepare` (no sidecar hash yet), existing files are quietly overwritten with a notice.
 

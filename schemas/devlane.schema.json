@@ -128,7 +128,7 @@
           }
         },
         "run": {
-          "description": "Optional bare-metal command declarations. When absent, devlane up is a no-op for bare-metal. When present, devlane up prints the rendered commands and exits. Devlane never spawns bare-metal processes (supervised-substrate rule, docs/00-principles.md).",
+          "description": "Optional bare-metal command declarations. When absent, devlane up is a no-op for bare-metal. When present, devlane up prints the rendered commands and exits. Devlane never spawns bare-metal processes (supervised-substrate rule, docs/00-principles.md) and never implicitly runs prepare. In Phase 2, if the adapter declares ports and any declared service is still unallocated, devlane up fails before printing commands and points the caller at prepare.",
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -157,7 +157,7 @@
                   "command": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Shell command with {{...}} templating. Scope includes ports.<name>, lane.*, app, runtime.env.*."
+                    "description": "Shell command with {{...}} templating. Scope matches generated templates: Phase 1 exposes the Phase 1 manifest groups plus env.<KEY>; Phase 2 adds ready and flattened ports.<name>."
                   }
                 }
               }
@@ -231,7 +231,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Explicit list of paths (relative to repo root) to copy from the source checkout into a new worktree, before prepare runs. Directories are copied recursively. Missing source files warn and continue. Paths that also appear in outputs.generated are skipped with a notice. No defaults; devlane does not guess which files are sensitive."
+          "description": "Explicit list of paths (relative to adapterRoot, the directory containing devlane.yaml) to copy from the source checkout into a new worktree, before prepare runs. Directories are copied recursively. Absolute paths are rejected, normalized paths may not escape repoRoot (the Git worktree root), and copy destinations must remain inside the target worktree root. Missing source files warn and continue. Paths that also appear in outputs.generated are skipped with a notice. No defaults; devlane does not guess which files are sensitive."
         }
       }
     },
@@ -269,7 +269,7 @@
               "destination": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Must resolve inside the repo root. Absolute paths outside the repo are refused at prepare time."
+                "description": "Resolved relative to adapterRoot and must remain inside repoRoot. Absolute paths outside the checkout are refused at prepare time."
               }
             }
           }

@@ -9,7 +9,7 @@ A **lane** is a named local execution context.
 Common lanes:
 
 - `stable` — the protected lane that may own global names
-- `feature-x` — a dev lane for a worktree or branch
+- `feature-x` — a dev lane for a worktree
 - `bugfix-auth` — another dev lane
 
 A lane is not only a Git branch. It is the combination of:
@@ -20,6 +20,33 @@ A lane is not only a Git branch. It is the combination of:
 - hostnames
 - cache/state/runtime roots
 - machine-readable manifest
+
+For dev lanes, the checkout path is the durable identity anchor. Branch, lane label, and mode are lane metadata that can change within that checkout without creating a brand-new lane record. Stable is the one special lane that may share a canonical checkout.
+
+## Slugification
+
+Some contract fields are derived through a deterministic slug algorithm rather than copied verbatim.
+
+- `lane.slug`, `DEVLANE_LANE_SLUG`, sibling worktree paths, and other lane-derived slugs use the strict form: lowercase and trim the source text, replace each run of non-`[a-z0-9]` characters with `-`, collapse repeated `-`, then trim leading and trailing `-`
+- if that strict form produces an empty string, the slug is invalid and commands such as `worktree create` fail before mutating anything
+- Compose project names use the same idea after pattern rendering, but allow `_` in addition to `-`: replace each run of characters outside `[a-z0-9_-]` with `-`, collapse repeated `-` and repeated `_`, then trim leading and trailing `-` and `_`
+
+This algorithm is part of the contract. Docs that talk about `<lane-slug>` or slug collisions are referring to this exact behavior, not an implementation-defined approximation.
+
+## Path anchors
+
+Devlane uses three path anchors consistently:
+
+- `repoRoot` — the absolute Git worktree root for the current checkout. `lane.repoRoot` in the manifest points here. Sibling worktree paths are derived from this root.
+- `adapterRoot` — the directory containing the active `devlane.yaml`. Relative adapter paths resolve from here.
+- `repoPath` — the absolute checkout/worktree root stored in the host catalog for allocation identity. For dev lanes, this is the durable identity anchor.
+
+Rule of thumb:
+
+- adapter-relative paths (`runtime.compose_files`, generated-template paths, output destinations, `worktree.seed`) resolve from `adapterRoot`
+- after normalization, those paths must remain inside `repoRoot`
+
+Phase 3 worktree lifecycle currently assumes `adapterRoot == repoRoot`. Subtree adapters in monorepos are supported for in-place commands such as `inspect`, `prepare`, `up`, and `status`, but `worktree create` / `worktree remove` are out of scope for them.
 
 ## Stable vs dev
 
@@ -39,15 +66,15 @@ Dev lanes should be isolated and disposable by default.
 A lane can run in one of two shapes:
 
 - **Bare-metal** (default) — the app binds real host ports directly. Ports are coordinated across the whole machine by the host catalog. `devlane up` is a no-op unless the adapter opts in via `runtime.run.commands`, in which case it prints the declared commands and exits. Devlane never spawns bare processes itself — see principle #1 in `00-principles.md`.
-- **Containerized** (opt-in) — the app runs via Docker Compose with a lane-aware project name. Declared by adding `compose_files` to the adapter.
+- **Containerized** (opt-in) — the app runs via Docker Compose with a lane-aware project name. Declared by adding `runtime.compose_files` to the adapter.
 
-The pattern is signaled declaratively by what the adapter declares: `ports` for host-port services, `compose_files` for container lifecycle, `runtime.run` for bare-metal command guidance, `host_patterns` for hostname-based discovery. Many repos use only some of these; all are optional and independent.
+The pattern is signaled declaratively by what the adapter declares: `ports` for host-port services, `runtime.compose_files` for container lifecycle, `runtime.run.commands` for bare-metal command guidance, `lane.host_patterns` for hostname-based discovery. Many repos use only some of these; all are optional and independent.
 
-`kind` remains a descriptive label for the repo (`web`, `cli`, `hybrid`); it does not override the lifecycle fields. A `cli` repo may still declare `ports` or `compose_files` when it exposes a local service or uses a sidecar.
+`kind` remains a descriptive label for the repo (`web`, `cli`, `hybrid`); it does not override the lifecycle fields. A `cli` repo may still declare `ports` or `runtime.compose_files` when it exposes a local service or uses a sidecar.
 
 ## Hostnames are optional
 
-Hostname-based discovery (`feature-x.demoapp.localhost`) is a useful enhancement but not a baseline. Most bare-metal dev is reachable as `localhost:<port>` without any DNS or proxy setup. Adapters declare `host_patterns` when the host has a Caddy, Traefik, `/etc/hosts`, or other mechanism that resolves the rendered hostnames. When omitted, discovery is port-based via `manifest.ports.<service>.port`.
+Hostname-based discovery (`feature-x.demoapp.localhost`) is a useful enhancement but not a baseline. Most bare-metal dev is reachable as `localhost:<port>` without any DNS or proxy setup. Adapters declare `lane.host_patterns` when the host has a Caddy, Traefik, `/etc/hosts`, or other mechanism that resolves the rendered hostnames. When omitted, discovery is port-based via `manifest.ports.<service>.port`.
 
 ## Adapter
 
@@ -74,7 +101,7 @@ Agents should prefer the manifest over scraping ad hoc files.
 
 ## Host catalog
 
-The **host catalog** at `~/.config/devlane/catalog.json` is the tool-owned record of which `(app, lane, service)` owns which host port on this machine.
+The **host catalog** at `~/.config/devlane/catalog.json` is the tool-owned record of which `(app, repoPath, service)` owns which host port on this machine.
 
 It is the manifest's peer at host scope: the manifest is the contract inside one lane, the catalog is the contract across lanes and repos.
 

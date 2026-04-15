@@ -65,7 +65,7 @@ Silent fallback would defeat the whole point of a fixture. Wrappers, docs, and e
 
 ## 5. Allocations are sticky
 
-Once a `(app, lane, service)` tuple has a port, it does not move.
+Once a `(app, repoPath, service)` allocation exists, it does not move.
 
 - `up` does not re-probe.
 - `down` does not release.

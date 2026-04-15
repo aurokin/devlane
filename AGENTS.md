@@ -44,7 +44,7 @@ These rules are the design center. Do not casually violate them. The full reason
 7. **Keep core repo-agnostic.** App-specific env var names, wrapper names, and product rules live in adapters and examples, not in the core library.
 8. **Prefer additive, machine-readable contracts.** If the behavior changes, update docs, schemas, examples, and tests together.
 9. **The host catalog is tool-owned.** `~/.config/devlane/catalog.json` is written by the tool and read by everyone else. Humans and agents should not hand-edit it. User configuration lives in `~/.config/devlane/config.yaml`, which the tool only reads.
-10. **Port allocations are sticky.** Once a `(app, lane, service)` tuple has a port, it does not move except via explicit `reassign` or `gc`. Do not introduce code paths that re-probe existing allocations silently.
+10. **Port allocations are sticky.** Once a `(app, repoPath, service)` allocation exists, it does not move except via explicit `reassign` or `gc`. Do not introduce code paths that re-probe existing allocations silently.
 11. **The tool does not become an application framework.** Proxy integration, deploy mechanics, process supervision, log collection, and credential management beyond the explicit `worktree.seed` copy are permanently out of scope. When a proposal feels useful but drifts into these territories, decline it and point at `docs/00-principles.md`.
 
 ## Working style
