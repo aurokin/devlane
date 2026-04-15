@@ -23,26 +23,26 @@ Expose the host catalog subsystem through the operational commands agents and hu
 
 - plain-number and verbose `port` output
 - `--probe` support with exit-code semantics
-- idempotent `reassign` with `--lane`
-- host-wide status and audit commands
-- explicit, confirmation-driven GC for stale allocations
+- idempotent `reassign` with `--lane` and explicit app-context preservation rules
+- host-wide status and read-only audit commands
+- explicit, confirmation-driven GC for stale allocations with `--app`, `--dry-run`, and `--yes`
 
 ## Work breakdown
 
-1. Implement lookup logic for current lane context and explicit `--lane` targeting.
+1. Implement lookup logic for current lane context and explicit `--lane` targeting, including repo-less ambiguity failures across apps.
 2. Build `port` around catalog reads and probing helpers.
 3. Build `reassign` on top of the allocator and write-half-of-prepare flow.
 4. Implement `host status` as a host-wide allocation view.
-5. Implement `host doctor` to audit bindability and repo drift.
-6. Implement `host gc` using the documented staleness rules and confirmation flow.
+5. Implement `host doctor` as a read-only audit of bindability conflicts, missing repos, and adapter drift, with non-zero exit semantics.
+6. Implement `host gc` using the documented staleness rules, `--app` scoping, and confirmation flow.
 
 ## Tests
 
 - `port` output and exit-code tests
-- `reassign` idempotency and single-service scope tests
+- `reassign` idempotency, single-service scope, and `--lane` ambiguity tests
 - `host status` listing tests
 - `host doctor` drift and conflict tests
-- `host gc` dry-run, confirmation, and scoped cleanup tests
+- `host gc` app-scope, dry-run, and confirmation tests
 
 ## Out of scope
 

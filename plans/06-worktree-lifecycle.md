@@ -24,7 +24,7 @@ Let devlane create and retire lanes end to end through `git worktree` integratio
 ## Deliverables
 
 - worktree creation flow: add checkout, copy seeds, run `prepare`
-- worktree removal flow: remove checkout, run scoped `host gc`
+- worktree removal flow: remove checkout, run dedicated scoped catalog cleanup
 - clear reporting of copied, skipped, and missing seed paths
 
 ## Work breakdown
@@ -35,7 +35,7 @@ Let devlane create and retire lanes end to end through `git worktree` integratio
 4. Skip seed entries that overlap generated destinations and report that clearly.
 5. Warn and continue on missing seed sources.
 6. Run `prepare` in the new worktree so catalog state is registered before use.
-7. Run scoped GC after removal so catalog entries do not linger.
+7. Run dedicated scoped cleanup after removal so only the removed worktree's `(app, lane, repoPath)` allocations are deleted.
 
 ## Tests
 
@@ -43,7 +43,7 @@ Let devlane create and retire lanes end to end through `git worktree` integratio
 - seed file and directory copy tests
 - overlap skip tests for generated destinations
 - missing source warning tests
-- worktree remove + scoped GC tests
+- worktree remove + dedicated scoped cleanup tests
 
 ## Out of scope
 

@@ -12,11 +12,12 @@ Deliverables:
 - stable manifest schema (ports-as-objects with `allocated` flag and optional `healthUrl`, plus the top-level `ready` flag)
 - working `inspect` that always recomputes from adapter + catalog, never reads manifest.json from disk
 - working `prepare` with strict validation (Groups A/B from `110-acceptance-checklist.md`) and sidecar-hash detection for hand-edited generated files
-- `devlane init` for zero-friction adoption (cwd-based detection; `--template`, `--from`, `--yes`, `--force`)
-- lane-aware `up`, `down`, and `status`:
+- `devlane init` for zero-friction adoption (deterministic lexical scan from cwd to depth 3; skip common non-app trees; no symlink traversal; `--template`, `--from`, `--app`, `--list`, `--yes`, `--all`, `--force`; fail rather than guess in non-interactive monorepo mode)
+- lane-aware `up`, `down`, `status`, and `doctor`:
   - **Containerized** (`compose_files` declared): `up` runs `docker compose up`, `down` runs `docker compose down`, `status` runs `docker compose ps`. The compose substrate is the supervisor.
-  - **Bare-metal** (`runtime.run.commands` declared): `up` prints the rendered commands and exits. `down` is a no-op. `status` prints the manifest-derived summary. Devlane never spawns bare processes.
+  - **Bare-metal** (`runtime.run.commands` declared): `up` prints the rendered commands and exits. `down` is a no-op. `status` prints the manifest-derived summary and probes declared ports as `bound` / `free`. Devlane never spawns bare processes.
   - **Hybrid** (both declared): `up` prints the bare-metal commands first, then runs compose. Exit code follows compose.
+  - **Doctor**: read-only preflight for tool prerequisites and adapter sanity; no app-health claims, no process supervision, no catalog mutation.
 - example adapters
 - acceptance tests
 
@@ -48,7 +49,7 @@ Goal: let the shared tool create and retire lanes, not only operate inside them.
 Deliverables:
 
 - `devlane worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. Uses the sibling path convention `<repo-root-parent>/<repo-root-base>-<lane-slug>`, creates a new branch named `<lane>` from the current `HEAD`, and fails rather than guessing if that branch or path already exists. Registers the dev lane's ports in the catalog before the user starts anything.
-- `devlane worktree remove <lane>` — `git worktree remove` + scoped catalog cleanup so the catalog self-cleans. Scoped cleanup removes only the removed worktree's `(app, lane, repoPath)` allocations.
+- `devlane worktree remove <lane>` — `git worktree remove` + dedicated scoped catalog cleanup so the catalog self-cleans. Scoped cleanup removes only the removed worktree's `(app, lane, repoPath)` allocations; it is not a host-wide `host gc`.
 - adapter `worktree.seed` — explicit list of paths (files and directories) copied from the source checkout into a new worktree before `prepare`. No defaults. Paths that also appear in `outputs.generated` are skipped with a notice. Missing source files warn and continue. The full list of copied paths is printed on completion for security clarity.
 
 Explicitly **not** in this phase:

@@ -98,6 +98,15 @@ Use this as the practical done bar.
 - `devlane status` in hybrid mode emits both halves: compose `ps` output for the supervised services, port probes for the bare-metal ones
 - `examples/hybrid-web/` exercises the pattern end to end (compose sidecar + `runtime.run.commands` + `kind: hybrid`)
 
+## Doctor
+
+- `devlane doctor` is read-only and does not mutate lane or catalog state
+- `devlane doctor` checks only tool prerequisites and adapter/config sanity for the current repo
+- `devlane doctor` checks required external tools and declared compose files when the current adapter uses compose
+- `devlane doctor` does not claim app health, process ownership, or lane readiness beyond reporting missing prerequisites or config errors
+- `devlane doctor` exits non-zero when a prerequisite or adapter/config error is found
+- `devlane doctor` output distinguishes actionable failures from informational notes so it is not confused with `status`
+
 ## Host catalog
 
 - `~/.config/devlane/catalog.json` is created on first `prepare` and survives process exits
@@ -122,7 +131,12 @@ Use this as the practical done bar.
 - `devlane reassign <service> --lane <name>` can target another lane of the same app when repo context is supplied by the current repo or by `--config` / `--cwd`
 - if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching `(lane, service)` entry exists; multiple matches across apps fail with a clear ambiguity error
 - `devlane host status` lists every allocation on the host
+- `devlane host doctor` is read-only and does not mutate the catalog
+- `devlane host doctor` probes every allocation and reports bindability conflicts, missing repos, or adapter drift
+- `devlane host doctor` exits non-zero when any allocation is stale or conflicting
+- `devlane host doctor` does not delete stale entries; cleanup remains explicit via `host gc`
 - `devlane host gc` removes entries whose `repoPath` is missing OR whose service is no longer declared
+- `devlane host gc` supports `--app`, `--dry-run`, and `--yes`
 - `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
 - reserved ports in `config.yaml` are never allocated, even when they match a dev-lane adapter's declared `default`
 - adapter-level `reserved` is merged with host `reserved` at allocation time; additive only
@@ -143,8 +157,9 @@ Use this as the practical done bar.
 - `worktree.seed` entries that also appear in `outputs.generated[].destination` are skipped with a one-line notice (prepare will render them)
 - `worktree create` prints the full list of copied paths on completion for security clarity
 - `worktree create` runs `prepare` in the new checkout so the catalog registers the new dev lane's ports before the user starts anything
-- `devlane worktree remove <lane>` runs `git worktree remove` and then scoped catalog cleanup so the catalog does not accumulate stale entries
+- `devlane worktree remove <lane>` runs `git worktree remove` and then dedicated scoped catalog cleanup so the catalog does not accumulate stale entries
 - scoped cleanup removes only allocations matching the removed worktree's `(app, lane, repoPath)`
+- worktree scoped cleanup is not `host gc` and does not scan unrelated repos
 - there is no `devlane worktree list` command
 - devlane does not touch per-worktree git config
 - devlane does not ship any default seed list; every path is explicit in the adapter

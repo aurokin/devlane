@@ -29,7 +29,7 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
   - **Hybrid**: both. The compose side reports container state; the bare-metal side reports port-bound evidence for the declared services.
 
 The bare-metal asymmetry is deliberate: with compose, the supervisor can answer "is my service up?" definitively; without a supervisor, the best devlane can do is ask the kernel "is this port bound?" and say so plainly.
-- `doctor` — validate obvious prerequisites.
+- `doctor` — read-only preflight for the current repo. Checks obvious prerequisites and adapter sanity for the current lane context: readable adapter/config, required external tools, and compose-file presence when compose is declared. It reports missing prerequisites clearly and exits non-zero on failures. It does not claim app health, process ownership, or runtime readiness.
 
 ## Host catalog commands
 
@@ -38,7 +38,7 @@ The bare-metal asymmetry is deliberate: with compose, the supervisor can answer 
   - when run inside a repo (or with `--config` / `--cwd` pointing at one), operate on `<service>` for that app and the requested lane
   - when repo context is unavailable and the implementation falls back to the host catalog, succeed only if exactly one catalog entry matches `(lane, service)`; zero matches fail clearly, and multiple matches across apps fail on ambiguity with the matching app/repo pairs printed
 - `host status` — list all allocations across the host.
-- `host doctor` — probe every allocation and report live conflicts, missing repos, or other drift.
+- `host doctor` — read-only host-wide audit. Probes every allocation and reports live conflicts, missing repos, or other drift. It exits non-zero when any allocation is stale or conflicting. It does not delete anything; cleanup remains explicit via `host gc`.
 - `host gc` — remove catalog entries whose repos or services no longer exist. Staleness = `repoPath` missing OR adapter no longer declares the service. Supports `--app`, `--dry-run`, `--yes`.
 
 See `65-host-catalog.md` for the catalog contract, allocation model, and fixture semantics for stable lanes.
@@ -48,7 +48,7 @@ See `65-host-catalog.md` for the catalog contract, allocation model, and fixture
 Worktree lifecycle is Phase 3 (see `100-implementation-plan.md`). The planned shape:
 
 - `worktree create <lane>` — `git worktree add` + seed copy + `prepare` in the new checkout. The target path is a sibling of the source repo root: `<repo-root-parent>/<repo-root-base>-<lane-slug>`. By default the command creates a new branch named `<lane>` from the current `HEAD`; if that branch already exists, it fails rather than silently resetting or reusing a different ref. Seed copy reads the adapter's `worktree.seed` list. `prepare` then registers the dev lane's ports in the catalog before the user starts anything.
-- `worktree remove <lane>` — `git worktree remove` + scoped catalog cleanup so the catalog self-cleans. "Scoped" means removing only allocations whose `(app, lane, repoPath)` match the worktree being removed; it is not a host-wide sweep.
+- `worktree remove <lane>` — `git worktree remove` + dedicated scoped catalog cleanup so the catalog self-cleans. "Scoped" means removing only allocations whose `(app, lane, repoPath)` match the worktree being removed; it is not a host-wide sweep and it does not run `host gc`.
 
 `worktree list` is explicitly **not** planned. `git worktree list` plus `devlane host status` already tells you what's running where.
 

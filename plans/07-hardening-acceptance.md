@@ -15,13 +15,14 @@ Close the rewrite by driving the full acceptance checklist to green and replacin
 - test coverage completion
 - schema and docs synchronization
 - example adapter refresh
+- prompt template refresh
 - output polish and error-message review
 - acceptance checklist audit
 
 ## Deliverables
 
 - complete acceptance pass across all implemented milestones
-- synced docs, schemas, and examples
+- synced docs, schemas, examples, and prompts
 - cleaned package boundaries and dead code removal
 - stable integration test harness for future work
 
@@ -29,16 +30,18 @@ Close the rewrite by driving the full acceptance checklist to green and replacin
 
 1. Audit the implementation against every checklist group and fill remaining gaps.
 2. Refresh examples so they exercise current contracts rather than old scaffolding assumptions.
-3. Align schemas with final implementation details and verify doc consistency.
-4. Remove obsolete code paths from the pre-rewrite scaffold.
-5. Improve command output where the spec requires clear operator guidance.
-6. Capture residual risks and explicitly defer only what the roadmap already defers.
+3. Refresh prompt templates so they still match the current contracts and examples.
+4. Align schemas with final implementation details and verify doc consistency.
+5. Remove obsolete code paths from the pre-rewrite scaffold.
+6. Improve command output where the spec requires clear operator guidance.
+7. Capture residual risks and explicitly defer only what the roadmap already defers.
 
 ## Tests
 
 - full unit and integration suite
 - golden output coverage for command UX that the acceptance checklist depends on
 - example-adapter end-to-end tests
+- prompt-template usability checks where the acceptance checklist depends on them
 
 ## Out of scope
 

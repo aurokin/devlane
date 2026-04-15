@@ -234,7 +234,7 @@ This keeps `--lane` usable without `cd` while still respecting the fact that the
 
 ## Garbage collection
 
-Catalog entries are never removed implicitly. `devlane host gc` is the only command that removes them.
+Catalog entries are never removed by `up`, `down`, or `prepare`. `devlane host gc` is the host-wide stale-entry cleanup command. `devlane worktree remove <lane>` uses a separate targeted deletion path for one removed worktree.
 
 Staleness heuristics — an allocation is stale if either:
 
@@ -251,7 +251,7 @@ By default `gc` prints what it would remove and prompts for confirmation.
 
 ### Scoped cleanup for worktree removal
 
-`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. After the worktree is removed, devlane deletes only allocations whose `(app, lane, repoPath)` match that removed worktree. It does not scan unrelated repos, and it does not remove sibling lanes for the same app.
+`devlane worktree remove <lane>` uses a narrower cleanup than `host gc`. After the worktree is removed, devlane deletes only allocations whose `(app, lane, repoPath)` match that removed worktree. It does not scan unrelated repos, it does not remove sibling lanes for the same app, and it does not invoke `host gc`.
 
 ## Why `down` does not touch the catalog
 
