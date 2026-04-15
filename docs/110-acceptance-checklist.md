@@ -32,6 +32,7 @@ Use this as the practical done bar.
 - `devlane init` never scaffolds `runtime.run.commands` entries that would be executed — there is no execute mode; all bare-metal commands are print-only
 - Ambiguous detection defaults to CLI with a clear notice pointing at `--template baremetal-web`
 - `devlane prepare` on a directory with no `devlane.yaml` prints a pointer to `devlane init`
+- any future proxy-signal detection in `init` is suggestion-only; it never silently infers `host_patterns` or hostname ownership into the adapter contract
 
 ## Core contract
 
@@ -67,6 +68,8 @@ Use this as the practical done bar.
 - `prepare` tracks a sidecar hash per generated file under `.devlane/`
 - when an on-disk generated file has been hand-edited, `prepare` prints a one-line warning and writes anyway
 - first `prepare` with no sidecar hash quietly overwrites existing files with a one-line notice
+- `prepare` validates all repo-local writes that can fail before committing catalog mutations, or explicitly rolls those mutations back on failure
+- a failed `prepare` or `reassign` write phase does not leave `inspect --json` reporting a misleadingly ready lane with stale or missing generated outputs
 
 ## Compose lifecycle
 
@@ -111,6 +114,7 @@ Use this as the practical done bar.
 
 - `~/.config/devlane/catalog.json` is created on first `prepare` and survives process exits
 - `~/.config/devlane/config.yaml` is optional and reasonable defaults apply when it is missing
+- malformed `~/.config/devlane/config.yaml` fails clearly and is covered by `schemas/config.schema.json` validation tests
 - catalog writes use `fcntl.flock` on `~/.config/devlane/catalog.json.lock` + atomic rename
 - catalog write lock acquire timeout is 30 seconds; failure prints a clear message
 - catalog reads do not take the lock
@@ -136,6 +140,7 @@ Use this as the practical done bar.
 - `devlane host doctor` exits non-zero when any allocation is stale or conflicting
 - `devlane host doctor` does not delete stale entries; cleanup remains explicit via `host gc`
 - `devlane host gc` removes entries whose `repoPath` is missing OR whose service is no longer declared
+- `devlane host doctor` and `host gc` also detect repo-identity drift when a `repoPath` still exists but no longer represents the same allocation identity the catalog entry claims
 - `devlane host gc` supports `--app`, `--dry-run`, and `--yes`
 - `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
 - reserved ports in `config.yaml` are never allocated, even when they match a dev-lane adapter's declared `default`
@@ -157,9 +162,11 @@ Use this as the practical done bar.
 - `worktree.seed` entries that also appear in `outputs.generated[].destination` are skipped with a one-line notice (prepare will render them)
 - `worktree create` prints the full list of copied paths on completion for security clarity
 - `worktree create` runs `prepare` in the new checkout so the catalog registers the new dev lane's ports before the user starts anything
+- if `worktree create` fails after `git worktree add` succeeds, the command prints the resulting state and the exact rollback or recovery action required; tests cover seed-copy failure and `prepare` failure after worktree creation
 - `devlane worktree remove <lane>` runs `git worktree remove` and then dedicated scoped catalog cleanup so the catalog does not accumulate stale entries
 - scoped cleanup removes only allocations matching the removed worktree's `(app, lane, repoPath)`
 - worktree scoped cleanup is not `host gc` and does not scan unrelated repos
+- if `worktree remove` completes only one half (git removal or scoped cleanup), the command reports the partial state clearly and leaves a deterministic recovery path
 - there is no `devlane worktree list` command
 - devlane does not touch per-worktree git config
 - devlane does not ship any default seed list; every path is explicit in the adapter
