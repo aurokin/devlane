@@ -93,6 +93,7 @@ go tool gotestsum -- ./...
 - `docs/README.md` — the reading map
 - `docs/00-principles.md` — the design rules that govern every other choice in the tool
 - `docs/10-when-to-use-this.md` — whether devlane is the right fit for your setup
+- `docs/15-tech-stack.md` — implementation language, tooling, and repository policy choices
 - `docs/20-concepts.md` — lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, generated outputs
 - `docs/30-quickstart.md` — fastest path to a first success
 - `docs/40-cli-contract.md` — what the shared tool owns

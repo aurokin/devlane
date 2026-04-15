@@ -14,7 +14,7 @@ Use this as the practical done bar.
 
 - `devlane init` creates a valid `devlane.yaml` that passes schema validation
 - `devlane init` auto-detects runtime pattern from signals (compose files present → containerized; framework manifest without compose → bare-metal; neither → CLI)
-- `devlane init` scans cwd and up to depth 3 below for candidate app roots using `compose*.yaml`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Gemfile`, `*.csproj` as signals
+- `devlane init` scans cwd and up to depth 3 below for candidate app roots using `compose*.yaml`, `package.json`, `Cargo.toml`, `go.mod`, `Gemfile`, `*.csproj` as signals
 - `devlane init` in a single-candidate tree scaffolds in place (the common case)
 - `devlane init` in a multi-candidate tree enters monorepo mode: lists candidates with inferred kinds and prompts for one or all
 - `devlane init --all` in monorepo mode scaffolds an adapter in every candidate without prompting

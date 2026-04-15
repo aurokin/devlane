@@ -19,7 +19,8 @@ Read in this order unless you already know the area you are touching:
 2. `docs/README.md`
 3. `docs/00-principles.md`
 4. `docs/10-when-to-use-this.md`
-5. `docs/30-quickstart.md`
+5. `docs/15-tech-stack.md`
+6. `docs/30-quickstart.md`
 
 Then branch by task:
 

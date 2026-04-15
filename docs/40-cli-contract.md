@@ -4,7 +4,7 @@ The shared tool should own **lifecycle**, not product-specific business logic. I
 
 ## Lifecycle commands
 
-- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. Outcomes:
+- `init` — scaffold a starter `devlane.yaml`. Scans for app roots (cwd and up to depth 3 below) and detects runtime pattern from signals at each candidate: `compose*.yaml` → containerized; `package.json` / `Cargo.toml` / `go.mod` / `Gemfile` / `*.csproj` without compose → bare-metal; neither → CLI. Outcomes:
   - **single** — one candidate (at cwd). Scaffold in place. Today's default path.
   - **monorepo** — multiple candidates. Print the list with inferred kind per candidate, prompt the user to pick one or all, and scaffold `devlane.yaml` in each chosen subtree. `--all` skips the prompt.
   - **ambiguous** — no confident signal. Scaffold a CLI template and print a notice pointing at `--template baremetal-web` or `--template containerized-web`.

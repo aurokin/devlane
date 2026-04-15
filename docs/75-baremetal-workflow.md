@@ -13,7 +13,7 @@ So `devlane up` **prints** the commands declared in `runtime.run.commands` and e
 ## What this pattern covers
 
 - apps that are not containerized, or where the container is optional
-- native dev servers (`npm run dev`, `cargo run`, `python manage.py runserver`) as the primary way the repo is run
+- native dev servers (`npm run dev`, `cargo run`, `go run ./cmd/server`) as the primary way the repo is run
 - users who want to attach debuggers, hot-reloaders, or profilers directly to the process
 - toolchains that expect fixed-port conventions (a framework that hard-codes `localhost:3000` in generated code, for example)
 
