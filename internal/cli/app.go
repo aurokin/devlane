@@ -11,9 +11,19 @@ import (
 	"github.com/auro/devlane/internal/compose"
 	"github.com/auro/devlane/internal/config"
 	"github.com/auro/devlane/internal/doctor"
+	"github.com/auro/devlane/internal/initcmd"
 	"github.com/auro/devlane/internal/manifest"
+	"github.com/auro/devlane/internal/portalloc"
 	"github.com/auro/devlane/internal/write"
 )
+
+var publishPrepareSession = func(session *portalloc.PrepareSession) error {
+	return session.Publish()
+}
+
+var closePrepareSession = func(session *portalloc.PrepareSession) error {
+	return session.Close()
+}
 
 type commonFlags struct {
 	config   string
@@ -41,6 +51,8 @@ func Run(args []string) int {
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(args[1:])
 	case "inspect":
 		return runInspect(args[1:])
 	case "prepare":
@@ -58,6 +70,55 @@ func Run(args []string) int {
 		printUsage()
 		return 2
 	}
+}
+
+func runInit(args []string) int {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		cwd      string
+		appPath  string
+		template string
+		from     string
+		list     bool
+		yes      bool
+		all      bool
+		force    bool
+	)
+
+	fs.StringVar(&cwd, "cwd", ".", "Working directory used for scanning")
+	fs.StringVar(&appPath, "app", "", "Target app path relative to --cwd")
+	fs.StringVar(&template, "template", "", "Starter template to use")
+	fs.StringVar(&from, "from", "", "Copy an existing adapter as the starting point")
+	fs.BoolVar(&list, "list", false, "List detected candidates without writing")
+	fs.BoolVar(&yes, "yes", false, "Skip interactive confirmation prompts")
+	fs.BoolVar(&all, "all", false, "Scaffold every detected candidate in monorepo mode")
+	fs.BoolVar(&force, "force", false, "Overwrite an existing devlane.yaml")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	result, err := initcmd.Execute(initcmd.Options{
+		CWD:      cwd,
+		AppPath:  appPath,
+		Template: template,
+		From:     from,
+		List:     list,
+		Yes:      yes,
+		All:      all,
+		Force:    force,
+		Stdin:    os.Stdin,
+		Stdout:   os.Stdout,
+	})
+	if err != nil {
+		return exitError(err)
+	}
+	for _, message := range result.Messages {
+		fmt.Println(message)
+	}
+	return 0
 }
 
 func runInspect(args []string) int {
@@ -107,12 +168,81 @@ func runPrepare(args []string) int {
 		return exitError(err)
 	}
 
-	if err := prepare(laneManifest, adapter); err != nil {
+	needsCatalogPrepare := len(adapter.Ports) > 0
+	if !needsCatalogPrepare {
+		needsCatalogPrepare, err = portalloc.HasAllocation(portalloc.Lane{
+			App:      adapter.App,
+			RepoPath: laneManifest.Lane.RepoRoot,
+			Name:     laneManifest.Lane.Name,
+			Mode:     laneManifest.Lane.Mode,
+			Branch:   laneManifest.Lane.Branch,
+			Stable:   laneManifest.Lane.Stable,
+		})
+		if err != nil {
+			return exitError(err)
+		}
+	}
+
+	if needsCatalogPrepare {
+		session, err := portalloc.BeginPrepare(adapter, portalloc.Lane{
+			App:      adapter.App,
+			RepoPath: laneManifest.Lane.RepoRoot,
+			Name:     laneManifest.Lane.Name,
+			Mode:     laneManifest.Lane.Mode,
+			Branch:   laneManifest.Lane.Branch,
+			Stable:   laneManifest.Lane.Stable,
+		})
+		if err != nil {
+			return exitError(err)
+		}
+		defer session.Close()
+
+		laneManifest = applyPortStates(laneManifest, session.States(), session.Ready())
+
+		result, rollback, err := write.PrepareWithRollback(laneManifest, adapter)
+		if err != nil {
+			return exitError(err)
+		}
+		if err := publishPrepareSession(session); err != nil {
+			if rollbackErr := rollback(); rollbackErr != nil {
+				return exitError(fmt.Errorf("%w; rollback local prepare state: %v", err, rollbackErr))
+			}
+			return exitError(err)
+		}
+		if err := closePrepareSession(session); err != nil {
+			return exitError(fmt.Errorf("prepared lane %q and published catalog state, but failed to release the catalog lock: %w", laneManifest.Lane.Name, err))
+		}
+		for _, message := range result.Messages {
+			fmt.Println(message)
+		}
+
+		fmt.Printf("prepared lane %q at %s\n", laneManifest.Lane.Name, laneManifest.Paths.Manifest)
+		return 0
+	}
+
+	result, err := write.Prepare(laneManifest, adapter)
+	if err != nil {
 		return exitError(err)
+	}
+	for _, message := range result.Messages {
+		fmt.Println(message)
 	}
 
 	fmt.Printf("prepared lane %q at %s\n", laneManifest.Lane.Name, laneManifest.Paths.Manifest)
 	return 0
+}
+
+func applyPortStates(base manifest.Manifest, states map[string]portalloc.State, ready bool) manifest.Manifest {
+	base.Ready = ready
+	base.Ports = make(manifest.Ports, len(states))
+	for name, state := range states {
+		base.Ports[name] = manifest.Port{
+			Port:      state.Port,
+			Allocated: state.Allocated,
+			HealthURL: state.HealthURL,
+		}
+	}
+	return base
 }
 
 func runUp(args []string) int {
@@ -127,25 +257,37 @@ func runUp(args []string) int {
 		return exitError(err)
 	}
 
-	if err := prepare(laneManifest, adapter); err != nil {
-		return exitError(err)
+	needsPreparedPorts := len(adapter.Ports) > 0 && (adapter.HasCompose() || adapter.HasRunCommands())
+	if needsPreparedPorts && !laneManifest.Ready {
+		return exitError(fmt.Errorf("lane %q has unallocated ports; run `devlane prepare` first", laneManifest.Lane.Name))
 	}
 
+	verifiedPreparedOutputs := false
 	if adapter.HasRunCommands() {
 		if err := printRunCommands(laneManifest, adapter); err != nil {
 			return exitError(err)
 		}
 
+		if err := write.VerifyPreparedOutputs(laneManifest, adapter); err != nil {
+			return exitError(err)
+		}
+		verifiedPreparedOutputs = true
+
 		if !adapter.HasCompose() {
 			return 0
 		}
-
-		fmt.Println()
-	}
-
-	if !adapter.HasCompose() {
+	} else if !adapter.HasCompose() {
 		fmt.Println("adapter does not declare compose files; nothing to start")
 		return 0
+	}
+
+	if !verifiedPreparedOutputs {
+		if err := write.VerifyPreparedOutputs(laneManifest, adapter); err != nil {
+			return exitError(err)
+		}
+	}
+	if adapter.HasRunCommands() {
+		fmt.Println()
 	}
 
 	command, err := compose.BuildCommand(laneManifest, "up", flags.profiles)
@@ -203,22 +345,16 @@ func runStatus(args []string) int {
 		return exitError(err)
 	}
 
-	if len(laneManifest.Ports) > 0 {
-		fmt.Printf("Lane: %s (%s)\n", laneManifest.Lane.Name, laneManifest.Lane.Mode)
-		fmt.Println("Services:")
-		for name, port := range laneManifest.Ports {
-			fmt.Printf("  %s\tport %d\tallocated=%t\n", name, port.Port, port.Allocated)
-		}
+	printStatusSummary(laneManifest, adapter)
+	if err := printPortStatus(laneManifest, adapter); err != nil {
+		return exitError(err)
 	}
 
 	if !adapter.HasCompose() {
-		if len(laneManifest.Ports) == 0 {
-			fmt.Println("adapter does not declare compose files or ports")
-		}
 		return 0
 	}
 
-	if len(laneManifest.Ports) > 0 {
+	if adapter.HasRunCommands() || len(adapter.Ports) > 0 {
 		fmt.Println()
 	}
 
@@ -241,16 +377,51 @@ func runDoctor(args []string) int {
 		return 2
 	}
 
-	_, configPath, adapter, _, err := load(flags)
+	cwd, configPath, adapter, err := loadAdapter(flags)
 	if err != nil {
 		return exitError(err)
 	}
 
-	for _, message := range doctor.Run(adapter, configPath) {
+	inputs, err := manifest.BuildInputs(adapter, manifest.Options{
+		CWD:        cwd,
+		ConfigPath: configPath,
+		LaneName:   flags.lane,
+		Mode:       flags.mode,
+		Profiles:   []string(flags.profiles),
+	})
+	if err != nil {
+		return exitError(err)
+	}
+
+	result := doctor.Run(adapter, inputs.ComposeFiles, configPath)
+	for _, message := range result.Messages {
 		fmt.Println(message)
 	}
 
+	if result.Failed {
+		return 1
+	}
+
 	return 0
+}
+
+func loadAdapter(flags *commonFlags) (string, string, *config.AdapterConfig, error) {
+	cwd, err := filepath.Abs(flags.cwd)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("resolve cwd: %w", err)
+	}
+
+	configPath, err := resolveConfig(flags.config, cwd)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	adapter, err := config.LoadAdapter(configPath)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	return cwd, configPath, adapter, nil
 }
 
 func newCommonFlagSet(name string) (*commonFlags, *flag.FlagSet) {
@@ -266,17 +437,7 @@ func newCommonFlagSet(name string) (*commonFlags, *flag.FlagSet) {
 }
 
 func load(flags *commonFlags) (string, string, *config.AdapterConfig, manifest.Manifest, error) {
-	cwd, err := filepath.Abs(flags.cwd)
-	if err != nil {
-		return "", "", nil, manifest.Manifest{}, fmt.Errorf("resolve cwd: %w", err)
-	}
-
-	configPath, err := resolveConfig(flags.config, cwd)
-	if err != nil {
-		return "", "", nil, manifest.Manifest{}, err
-	}
-
-	adapter, err := config.LoadAdapter(configPath)
+	cwd, configPath, adapter, err := loadAdapter(flags)
 	if err != nil {
 		return "", "", nil, manifest.Manifest{}, err
 	}
@@ -293,18 +454,6 @@ func load(flags *commonFlags) (string, string, *config.AdapterConfig, manifest.M
 	}
 
 	return cwd, configPath, adapter, laneManifest, nil
-}
-
-func prepare(laneManifest manifest.Manifest, adapter *config.AdapterConfig) error {
-	if err := write.Manifest(laneManifest); err != nil {
-		return err
-	}
-
-	if err := write.ComposeEnv(laneManifest, adapter); err != nil {
-		return err
-	}
-
-	return write.Outputs(laneManifest, adapter)
 }
 
 func printRunCommands(laneManifest manifest.Manifest, adapter *config.AdapterConfig) error {
@@ -333,13 +482,21 @@ func resolveConfig(raw, cwd string) (string, error) {
 		return filepath.Clean(raw), nil
 	}
 
-	if _, err := os.Stat(raw); err == nil {
-		return filepath.Clean(raw), nil
-	}
-
 	candidate := filepath.Join(cwd, raw)
 	if _, err := os.Stat(candidate); err == nil {
-		return filepath.Clean(candidate), nil
+		absolute, absErr := filepath.Abs(candidate)
+		if absErr != nil {
+			return "", fmt.Errorf("resolve config: %w", absErr)
+		}
+		return filepath.Clean(absolute), nil
+	}
+
+	if _, err := os.Stat(raw); err == nil {
+		absolute, absErr := filepath.Abs(raw)
+		if absErr != nil {
+			return "", fmt.Errorf("resolve config: %w", absErr)
+		}
+		return filepath.Clean(absolute), nil
 	}
 
 	if raw == "devlane.yaml" {
@@ -358,7 +515,57 @@ func resolveConfig(raw, cwd string) (string, error) {
 		}
 	}
 
+	if raw == "devlane.yaml" {
+		return "", fmt.Errorf("config not found: %s (run `devlane init` or pass --config)", raw)
+	}
+
 	return "", fmt.Errorf("config not found: %s", raw)
+}
+
+func printStatusSummary(laneManifest manifest.Manifest, adapter *config.AdapterConfig) {
+	fmt.Printf("Lane: %s (%s)\n", laneManifest.Lane.Name, laneManifest.Lane.Mode)
+	fmt.Printf("App: %s (%s)\n", laneManifest.App, laneManifest.Kind)
+	fmt.Printf("Project: %s\n", laneManifest.Network.ProjectName)
+	if laneManifest.Network.PublicURL != nil {
+		fmt.Printf("Public URL: %s\n", *laneManifest.Network.PublicURL)
+	} else {
+		fmt.Println("Public URL: -")
+	}
+	if len(laneManifest.Ports) > 0 {
+		fmt.Printf("Ports ready: %t\n", laneManifest.Ready)
+	}
+
+	if adapter.HasRunCommands() {
+		fmt.Printf("Bare-metal commands: %d declared\n", len(adapter.Runtime.Run.Commands))
+	} else if !adapter.HasCompose() {
+		fmt.Println("Bare-metal commands: none declared")
+	}
+}
+
+func printPortStatus(laneManifest manifest.Manifest, adapter *config.AdapterConfig) error {
+	if len(adapter.Ports) == 0 {
+		return nil
+	}
+
+	fmt.Println("Services:")
+	for _, portConfig := range adapter.Ports {
+		portState, ok := laneManifest.Ports[portConfig.Name]
+		if !ok {
+			return fmt.Errorf("manifest is missing port state for service %q", portConfig.Name)
+		}
+
+		status := "unallocated"
+		if portState.Allocated {
+			status = "free"
+			if err := portalloc.Probe(portState.Port); err != nil {
+				status = "bound"
+			}
+		}
+
+		fmt.Printf("  %-6s port %-5d %s\n", portConfig.Name, portState.Port, status)
+	}
+
+	return nil
 }
 
 func exitError(err error) int {
@@ -367,5 +574,5 @@ func exitError(err error) int {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: devlane <inspect|prepare|up|down|status|doctor> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|up|down|status|doctor> [flags]")
 }

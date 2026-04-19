@@ -39,6 +39,8 @@ If your task depends on generated files or `.devlane/compose.env`, do not use `r
 
 The same rule applies before `up`: if the adapter declares `ports`, do not rely on provisional `inspect` values. `up` does not commit them; `prepare` does.
 
+For compose-backed adapters, `up` also verifies that the current prepare-owned compose inputs still match the live manifest/template state. If `.devlane/compose.env` or any declared `outputs.generated` file is stale or missing, `up` fails and points back at `prepare` instead of starting containers against mixed state.
+
 ## What `devlane status` tells you (and how bare-metal differs from compose)
 
 `status` is read-only. What it can tell you depends on whether the lane has a supervisor:
@@ -99,9 +101,9 @@ If you use `devlane init --from <path>`, treat the copied adapter as a draft. Re
 Two discovery surfaces are first-class:
 
 - **Hostname-based** — when the adapter declares `host_patterns` and the host has a proxy or DNS resolving them. `manifest.network.publicHost` and `publicUrl` are populated.
-- **Port-based** — the default for most bare-metal apps. `manifest.ports.<service>.port` is the authoritative number. `manifest.network.publicHost` is null.
+- **Port-based** — this becomes first-class in Phase 2 once host-catalog-backed `manifest.ports.<service>.port` lands. In Phase 1, discovery is usually via generated files plus the manifest's path and network fields.
 
-Agents should check both. If `publicHost` is non-null, it is the preferred way to reach the app (stable across port changes). Otherwise, use `manifest.ports.<service>.port` on localhost. Always read the manifest; never guess.
+Agents should check both. If `publicHost` is non-null, it is the preferred way to reach the app (stable across port changes). Once Phase 2 lands, otherwise use `manifest.ports.<service>.port` on localhost. Always read the manifest; never guess.
 
 ## Handling port conflicts
 

@@ -2,6 +2,8 @@
 
 This is the **default runtime pattern** in `devlane`. It is the shape for repos whose services run directly on the host — no containers, no shared ingress proxy, just processes binding real host ports.
 
+Most of this document describes the **Phase 2 target workflow** where the host catalog allocates and reports ports. In Phase 1, the implemented surface is narrower: `prepare` writes the manifest and generated outputs, `up` prints bare-metal commands without spawning them, and template scope excludes `ready` / `ports.<name>`.
+
 The opt-in alternative is containerized: see `70-container-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both (hybrid mode).
 
 ## Why `devlane up` never spawns bare processes
@@ -50,7 +52,7 @@ See `65-host-catalog.md` for the full allocation model, collision scenarios, and
 
 ## Optional: `runtime.run` for `devlane up` guidance
 
-`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits. It never implicitly runs `prepare`. In Phase 2, if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing anything and points the caller at `prepare`.
+`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits. It never implicitly runs `prepare`. In Phase 2, if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing anything and points the caller at `prepare`. Port-only adapters with no `runtime.run.commands` remain no-ops; `up` does not require `prepare` when there is nothing for devlane to start or print.
 
 ```yaml
 runtime:
@@ -58,7 +60,7 @@ runtime:
     commands:
       - name: web
         description: "Start the Rails server"
-        command: "bin/rails server -p {{ports.web}}"
+        command: "bin/rails server -p 3000"
       - name: worker
         command: "bin/sidekiq"
 ```
@@ -120,13 +122,15 @@ New variables are added to both scopes together.
 
 ## What `prepare` produces
 
+In Phase 1, `prepare` writes the manifest, generated outputs, and `.devlane/compose.env` when compose is declared. Once Phase 2 lands, it also produces:
+
 - `manifest.ports.web.port`, `manifest.ports.api.port`, etc. — integers, the resolved ports
 - `manifest.ports.web.healthUrl` when `health_path` is declared on that port
 - `manifest.ready: true` once every declared port has an allocation
 - `DEVLANE_PORT_WEB=3100`, `DEVLANE_PORT_API=4000` in `.devlane/compose.env` when compose is also in use (otherwise compose env is omitted)
 - any template can reference `{{ports.web}}` to render a real number into generated config
 
-## Typical template
+## Typical template (Phase 2)
 
 A framework like Next.js reads `PORT` from `.env.local`. The adapter generates that file from a template:
 

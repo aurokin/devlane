@@ -33,7 +33,7 @@
     },
     "ready": {
       "type": "boolean",
-      "description": "True iff the catalog has entries for every declared port (equivalently, every ports.*.allocated is true). Does not claim bindability or running state. When the adapter declares no ports, ready is true (no allocations to wait on). Fresh when emitted by inspect --json; snapshot when read from .devlane/manifest.json on disk."
+      "description": "True when every adapter-declared service has a committed host-port allocation for this lane."
     },
     "lane": {
       "type": "object",
@@ -135,31 +135,29 @@
     },
     "ports": {
       "type": "object",
-      "description": "Keyed by service name. Every service declared in the adapter's ports[] has an entry.",
+      "description": "Host-port state for every adapter-declared service. Empty when the adapter declares no ports.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "required": [
           "port",
-          "allocated"
+          "allocated",
+          "healthUrl"
         ],
         "properties": {
           "port": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 65535,
-            "description": "Allocated port if allocated=true. When allocated=false, this is a provisional value: stable lanes emit their fixture (stable_port when declared, otherwise default); dev lanes emit the current best candidate computed against the live catalog using the allocator rules. Provisional values are not reserved and may still change before prepare publishes an allocation."
+            "maximum": 65535
           },
           "allocated": {
-            "type": "boolean",
-            "description": "True when the durable (app, repoPath, service) tuple has an entry in the host catalog. lane/mode/branch are metadata, not the identity key. False when inspect is computing the manifest before prepare has ever run."
+            "type": "boolean"
           },
           "healthUrl": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Rendered as http://localhost:<port><health_path> when the adapter declares health_path on the port. Null otherwise."
+            ]
           }
         }
       }

@@ -101,17 +101,18 @@ The sequence is:
 2. acquire the catalog lock and compute the allocation mutation
 3. perform repo-local writes against that in-memory result (manifest, compose env, generated files)
 4. publish the new `catalog.json` only after those writes succeed
-5. on failure, release the lock without publishing the mutation and print which repo-local outputs were promoted before the failure, if any
+5. on failure before publish, roll back any repo-local outputs that were already promoted, then release the lock without publishing the mutation
+6. if publish succeeds but lock release fails, return that lock-close error without rolling back the already-published catalog or repo-local outputs
 
 This keeps unlocked readers from observing a misleadingly "ready" catalog state while repo-local outputs are still stale or missing.
 
-Repo-local writes are staged to temp files in the destination directories and then promoted in deterministic order via atomic rename where possible. There is no cross-file transaction for the repo-local half: if a late promotion fails, earlier promoted files may remain updated while later ones do not. The catalog still stays unpublished, and rerunning `prepare` is the repair path.
+Repo-local writes are staged to temp files in the destination directories and then promoted in deterministic order via atomic rename where possible. If a late promotion fails, devlane restores snapshots for any already-promoted outputs before returning the error. The catalog still stays unpublished.
 
 ## Allocation algorithm
 
 When `prepare` runs, for each port declared in the adapter, in adapter declaration order:
 
-1. **Existing allocation check.** If there is already a catalog entry for `(app, repoPath, service)`, keep that port. Do not re-probe. Do not move. Non-negotiable #10.
+1. **Existing allocation check.** If there is already a catalog entry for `(app, repoPath, service)`, keep that port for dev lanes. Stable lanes reuse an existing row only when it already matches the service's fixture (`stable_port` when declared, otherwise `default`). If the same checkout is switching into stable mode and its existing row is on a dev-only port, stable evaluates the fixture instead of silently reusing the old port.
 2. **Merge reserved lists.** Effective `reserved` = host `config.yaml.reserved` ∪ adapter-level `reserved`. Adapter `reserved` is additive-only; it cannot un-reserve a host-reserved port.
 3. **Stable-lane allocation (fixture).** If `lane` matches the adapter's `stable_name`, the stable fixture is `stable_port` when declared on the port, otherwise `default`:
    - If the fixture is in effective `reserved`, `prepare` fails with a message telling the user to change either the adapter or `reserved`. No silent fallback.
@@ -122,13 +123,13 @@ When `prepare` runs, for each port declared in the adapter, in adapter declarati
    - If the port declares `pool_hint: [low, high]` and that range sits inside the host `port_range`, walk `[low, high]` start-to-end next, skipping `reserved` and held ports. Otherwise skip to the next step.
    - Walk the full host `port_range` start-to-end, skipping `reserved` and held ports.
    - Take the first bindable port. If no port is free, `prepare` fails and points the user at `devlane host gc` or widening `port_range`.
-5. **Refresh metadata** on the entry: `mode`, `lane`, `branch`, `lastPrepared`.
+5. **Refresh metadata** on the entry: `mode`, `lane`, `branch`, `lastPrepared`. When stable claims its fixture for the current checkout after a prior dev allocation, it updates that existing row in place rather than creating a duplicate row for the same `(app, repoPath, service)`.
 
 During both `prepare` and provisional `inspect --json` computation, ports chosen earlier in declaration order are treated as tentatively held while later services are resolved. A single manifest must never assign the same port to two services in one checkout.
 
-`prepare` only probes during allocation. It does not re-probe existing entries.
+`prepare` and provisional `inspect --json` probe only while choosing a new port. They do not re-probe existing catalog entries.
 
-`inspect --json` uses the same allocation rules to compute **provisional** values for unallocated ports, but it does not take the lock and it does not reserve anything. It answers "what would `prepare` pick if it ran right now?" That answer can still change before `prepare` if another writer publishes first.
+`inspect --json` uses the same allocation rules to compute **provisional** values for unallocated ports, but it does not take the lock and it does not reserve anything. For dev lanes, it reports the current bindable candidate `prepare` would choose right now. For stable lanes, it reports the fixture only when that fixture is currently usable; otherwise `inspect` fails with the same unavailability condition `prepare` would surface. Any provisional answer can still change before `prepare` if another writer publishes first.
 
 ### Why `default` can sit outside `port_range`
 
@@ -141,6 +142,8 @@ The stable fixture is `stable_port` when the adapter declares it on the port, ot
 Fixture semantics require strictness: if stable cannot get its fixture, `prepare` fails loudly rather than silently falling back to a pool port. Silent fallback would defeat the whole point of a fixture — wrappers and docs could no longer rely on stable being at its declared port.
 
 Stable does not evict other lanes to take its fixture. Collisions are surfaced as errors that the user resolves explicitly.
+
+If the current checkout already has a dev allocation for the same service, stable does not treat that dev-only port as authoritative. It either updates that same row onto the fixture or fails if the fixture is unavailable.
 
 ### When to declare `stable_port` vs let `default` do the work
 

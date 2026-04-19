@@ -21,6 +21,8 @@
         "required": [
           "app",
           "lane",
+          "mode",
+          "branch",
           "service",
           "port",
           "repoPath",
@@ -32,6 +34,14 @@
             "minLength": 1
           },
           "lane": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["stable", "dev"]
+          },
+          "branch": {
             "type": "string",
             "minLength": 1
           },

@@ -42,7 +42,7 @@ The scaffold is intentionally small but useful:
 - writes `.devlane/compose.env` (when `compose_files` is declared)
 - renders repo-local generated files from templates
 - builds lane-aware `docker compose` commands for containerized adapters; prints (never runs) bare-metal commands from `runtime.run.commands`
-- exposes `inspect`, `prepare`, `up`, `down`, `status`, `doctor`, and `init`
+- exposes `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
 
 ## What Phase 2 adds
 

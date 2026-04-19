@@ -25,12 +25,21 @@ func runGit(cwd string, args ...string) (string, error) {
 }
 
 func FindRepoRoot(cwd string) string {
-	root, err := runGit(cwd, "rev-parse", "--show-toplevel")
-	if err != nil {
+	root, ok := FindRepoRootOK(cwd)
+	if !ok {
 		return filepath.Clean(cwd)
 	}
 
-	return filepath.Clean(root)
+	return root
+}
+
+func FindRepoRootOK(cwd string) (string, bool) {
+	root, err := runGit(cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", false
+	}
+
+	return filepath.Clean(root), true
 }
 
 func CurrentBranch(cwd string) string {

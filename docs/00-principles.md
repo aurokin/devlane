@@ -65,13 +65,13 @@ Silent fallback would defeat the whole point of a fixture. Wrappers, docs, and e
 
 ## 5. Allocations are sticky
 
-Once a `(app, repoPath, service)` allocation exists, it does not move.
+Once a `(app, repoPath, service)` allocation exists, it does not move during ordinary dev-lane churn.
 
 - `up` does not re-probe.
 - `down` does not release.
 - `prepare` does not re-probe existing allocations.
 
-The only commands that move a port are `devlane reassign <service>` (explicit repair, scoped, idempotent) and `devlane host gc` (explicit cleanup by staleness heuristics). Neither is implicit.
+The usual commands that move a port are `devlane reassign <service>` (explicit repair, scoped, idempotent) and `devlane host gc` (explicit cleanup by staleness heuristics). The one stable-specific exception is the current checkout flipping from dev mode to stable mode: if its existing row is on a dev-only port, `prepare` / `inspect --json` must still honor the stable fixture instead of treating the dev port as authoritative.
 
 Stickiness is what makes lane identity stable across stop/start cycles, worktree shelving, and machine reboots. Agents and external tools can cache port information with confidence. Cacheability is the whole point.
 

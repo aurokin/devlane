@@ -4,6 +4,8 @@ This is the **opt-in containerized pattern** in `devlane`. It is the recommended
 
 The default pattern is bare-metal: see `75-baremetal-workflow.md`. The two patterns can coexist on the same machine — the host catalog keeps their ports from colliding — and the same adapter can declare both (hybrid mode).
 
+The implemented Phase 1 surface covers compose lifecycle, generated outputs, and env projection for project/hostname data. Host-catalog-backed `ports`, `DEVLANE_PORT_<NAME>`, and allocation-aware status are Phase 2 additions documented here as the target state.
+
 ## Why `devlane up` runs compose for you
 
 Compose is a supervisor: it owns PIDs, handles logs, supports `ps` / `logs` / `restart`, and survives your shell exiting. Running `docker compose up` for you is safe because the substrate already does the supervision work. This is the supervised-substrate rule (principle #1 in `00-principles.md`).
@@ -53,8 +55,9 @@ When the compose pattern is in use, `prepare` writes `.devlane/compose.env` with
 - `DEVLANE_COMPOSE_PROJECT` — the rendered project name
 - `DEVLANE_PUBLIC_HOST` — the rendered hostname (empty string when `host_patterns` is omitted)
 - `DEVLANE_PUBLIC_URL` — the full URL (empty string when `host_patterns` is omitted)
-- `DEVLANE_PORT_<NAME>` — allocated ports for any declared `ports[]` services
 - any entries from `runtime.env`
+
+Once Phase 2 lands, the env projection also includes `DEVLANE_PORT_<NAME>` for allocated `ports[]` services.
 
 Compose reads this file via `env_file` or the `--env-file` flag to pick up the lane-specific values.
 

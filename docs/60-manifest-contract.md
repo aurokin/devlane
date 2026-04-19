@@ -154,7 +154,7 @@ Before the first `prepare`, no catalog entry exists for `(app, repoPath, service
 }
 ```
 
-For a stable lane, `port` is the fixture (`stable_port` when declared, otherwise `default`). For a dev lane, `port` is a **provisional candidate** computed against the live catalog using the same allocator `prepare` would use right now: walk services in adapter declaration order, tentatively holding earlier picks in memory, then for each service try `default`, then `pool_hint` when valid, then the host `port_range`, all while respecting held and reserved ports. `ready: false` and `allocated: false` tell the consumer "this is the current best candidate; run `prepare` to commit it." Because the value is computed against the live catalog rather than reserved ahead of time, it may still change before `prepare` if another writer publishes first. Agents should check `ready` (or at minimum the per-port `allocated`) before relying on a port being bindable.
+For a stable lane, `port` is the fixture (`stable_port` when declared, otherwise `default`) only when that fixture is currently usable; if the fixture is unavailable, `inspect --json` fails with the same condition `prepare` would report. For a dev lane, `port` is a **provisional candidate** computed against the live catalog using the same allocator `prepare` would use right now: walk services in adapter declaration order, tentatively holding earlier picks in memory, then for each service try `default`, then `pool_hint` when valid, then the host `port_range`, all while respecting held, reserved, and currently unbindable ports. `ready: false` and `allocated: false` tell the consumer "this is the current best candidate; run `prepare` to commit it." Because the value is computed against the live catalog rather than reserved ahead of time, it may still change before `prepare` if another writer publishes first. Agents should check `ready` (or at minimum the per-port `allocated`) before relying on a port being bindable.
 
 Branch, lane label, and mode are metadata carried under `lane.*`. They are not the durable identity key for dev-lane allocations; switching branches in place updates the manifest metadata for the same checkout rather than creating drift by itself.
 
@@ -185,8 +185,9 @@ DEVLANE_BRANCH, DEVLANE_MODE, DEVLANE_LANE, DEVLANE_LANE_SLUG, DEVLANE_STABLE
 DEVLANE_REPO_ROOT, DEVLANE_CONFIG, DEVLANE_MANIFEST, DEVLANE_COMPOSE_ENV
 DEVLANE_STATE_ROOT, DEVLANE_CACHE_ROOT, DEVLANE_RUNTIME_ROOT
 DEVLANE_COMPOSE_PROJECT, DEVLANE_PUBLIC_HOST, DEVLANE_PUBLIC_URL
-DEVLANE_PORT_<NAME>  (one per declared port)
 ```
+
+`DEVLANE_PORT_<NAME>` is Phase-2-only, because Phase 1 does not project catalog-backed ports yet.
 
 Plus any `runtime.env` keys declared in the adapter, with `{public_host}`, `{public_url}`, `{lane_name}`, `{lane_slug}`, `{app}`, `{mode}`, `{branch}`, `{project_name}`, `{state_root}`, `{cache_root}`, `{runtime_root}` expanded.
 

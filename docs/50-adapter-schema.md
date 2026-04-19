@@ -6,7 +6,7 @@ The adapter should stay small and declarative. See principle #2 in `00-principle
 
 ## Scaffolding a new adapter
 
-`devlane init` writes a starter `devlane.yaml` based on what it finds in the repo — compose files present (containerized), framework manifest without compose (bare-metal), or neither (CLI). Hybrid is available as an explicit starter template rather than an inferred detection result: use `--template hybrid-web` when the repo mixes bare-metal and compose on purpose. `--from <path>` copies an existing example literally rather than migrating it: relative paths and repo-specific identifiers are preserved as written, then reviewed by the user in the target repo. Most adoptions start here and then customize the result.
+`devlane init` writes a starter `devlane.yaml` based on what it finds in the repo — Compose files such as `compose.yaml`, `compose.yml`, `compose.dev.yaml`, or `docker-compose.yml` (containerized), framework manifest without compose (bare-metal), or neither (CLI). Hybrid is available as an explicit starter template rather than an inferred detection result: use `--template hybrid-web` when the repo mixes bare-metal and compose on purpose. When `init` detects containerized signals, it preserves the matched Compose filename list in `runtime.compose_files` instead of normalizing it to `compose.yaml`. `--from <path>` copies an existing example literally rather than migrating it: relative paths and repo-specific identifiers are preserved as written, then reviewed by the user in the target repo. Most adoptions can start from `init`, then compare against the example adapters in `examples/` when they need a closer reference.
 
 ## Example
 
@@ -86,6 +86,8 @@ When you scaffold from another adapter with `devlane init --from <path>`, devlan
 
 That keeps the command deterministic and repo-agnostic. It also means imported adapters may contain paths or identifiers that do not make sense in the target repo. After copying, review those fields explicitly before treating the new adapter as adopted.
 
+If a copied relative path would resolve outside the target repo root, `init --from` fails before writing anything. For copied input paths that stay inside the repo root (`runtime.compose_files`, `outputs.generated[].template`, `worktree.seed`), `init` still succeeds but warns when the referenced file does not exist in the target repo yet.
+
 ### Top-level
 
 - `schema` — adapter schema version
@@ -130,7 +132,7 @@ runtime:
     commands:
       - name: web
         description: "Start the Rails API"
-        command: "bin/rails server -p {{ports.web}}"
+        command: "bin/rails server"
       - name: worker
         command: "bin/sidekiq"
 ```
@@ -150,13 +152,13 @@ New variables are added to both scopes together.
 
 Optional. A list of named port needs.
 
-- `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`)
+- `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`) once Phase 2 host-catalog-backed ports land
 - `default` — preferred port, tried first during dev-lane allocation. Plays the stable-fixture role too when `stable_port` is absent.
 - `health_path` — optional HTTP path. When declared, the manifest emits `ports.<name>.healthUrl` as `http://localhost:<port><health_path>`. Devlane itself does not probe this URL; it is for agents and tooling.
 - `stable_port` — optional. When declared, the stable lane asserts this port as a fixture at `prepare` time. Omit to let `default` play both roles. Declaring `stable_port` lets teams have a distinct dev-lane preference (via `default`) from the stable fixture.
 - `pool_hint` — optional `[low, high]` pair. Dev-lane pool allocation walks this subrange first before falling back to the host-wide `port_range`. Must sit inside the host range; if not, the walk falls back immediately.
 
-The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move unless `devlane reassign` or `devlane host gc` is run. See `65-host-catalog.md` for the allocation model, including the fixture semantics that apply to stable lanes.
+The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move during ordinary dev-lane churn, with `devlane reassign`, `devlane host gc`, and stable reclaiming the current checkout's fixture as the explicit exceptions. See `65-host-catalog.md` for the allocation model, including the fixture semantics that apply to stable lanes.
 
 If `ports` is omitted, no ports are allocated. This is appropriate for pure-CLI repos that do not bind host ports.
 
@@ -200,7 +202,7 @@ Phase 3 worktree commands are supported only when `adapterRoot == repoRoot`. Sub
 
 The seed list and `outputs.generated` answer different questions. Keeping them separate in your repo is the cleanest setup:
 
-- **Generated files** are derived from the manifest (port numbers, lane-specific URLs). `prepare` renders them every time, in every worktree. Example: `.env.local` with `PORT={{ports.web}}`.
+- **Generated files** are derived from the manifest (lane-specific URLs, roots, and other deterministic metadata). `prepare` renders them every time, in every worktree. Example: `.env.local` with `NEXT_PUBLIC_SITE_URL={{network.publicUrl}}`.
 - **Seed files** are per-developer or per-machine inputs that cannot be derived from anything devlane knows. Example: `.env.secrets` holding an OpenAI key, or `config/master.key` decrypting Rails credentials.
 
 The shapes should not be the same file. If a single `.env.local` mixes a templated port with a hand-pasted API key, split it: generate the lane-derived parts from a template, and put the secrets in a sibling file (`.env.secrets`, `.env.local.personal`, etc.) that the app reads alongside. That way `prepare` owns the generated file and `worktree.seed` owns the secret, with no collision.

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,15 @@ func ResolvePath(base, raw string) string {
 	}
 
 	return filepath.Clean(filepath.Join(base, path))
+}
+
+func ResolveAdapterPath(adapterRoot, repoRoot, raw string) (string, error) {
+	resolved := ResolvePath(adapterRoot, raw)
+	if !isWithinAfterSymlinkResolution(repoRoot, resolved) {
+		return "", fmt.Errorf("path must stay within repo root: %s", resolved)
+	}
+
+	return resolved, nil
 }
 
 func EnsureParent(path string) error {
@@ -90,4 +100,45 @@ func IsWithin(base, target string) bool {
 	}
 
 	return relative == "." || (!strings.HasPrefix(relative, "..") && !slices.Contains([]string{"..", ""}, relative))
+}
+
+func isWithinAfterSymlinkResolution(base, target string) bool {
+	baseResolved, err := resolvePathWithSymlinks(base)
+	if err != nil {
+		return false
+	}
+
+	targetResolved, err := resolvePathWithSymlinks(target)
+	if err != nil {
+		return false
+	}
+
+	return IsWithin(baseResolved, targetResolved)
+}
+
+func resolvePathWithSymlinks(path string) (string, error) {
+	clean := filepath.Clean(path)
+	current := clean
+	suffix := make([]string, 0)
+
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
 }

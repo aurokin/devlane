@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/auro/devlane/internal/manifest"
 	"github.com/auro/devlane/internal/util"
@@ -45,6 +46,26 @@ func BuildCommand(manifest manifest.Manifest, action string, extraProfiles []str
 func DockerAvailable() bool {
 	_, err := exec.LookPath("docker")
 	return err == nil
+}
+
+func DockerComposeAvailable() error {
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		return fmt.Errorf("docker binary not found")
+	}
+
+	cmd := exec.Command(dockerPath, "compose", "version")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+
+	message := strings.TrimSpace(string(output))
+	if message == "" {
+		return fmt.Errorf("docker compose command failed: %w", err)
+	}
+
+	return fmt.Errorf("%s", message)
 }
 
 func Run(command []string, cwd string) int {

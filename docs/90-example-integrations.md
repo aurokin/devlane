@@ -35,8 +35,8 @@ It demonstrates:
 
 - `kind: hybrid` with both `runtime.compose_files` and `runtime.run.commands`
 - `devlane up` printing the bare-metal commands first, then running `docker compose up`
-- ports coordinated across bare-metal and compose services by the host catalog
-- a compose sidecar publishing its port on the host via `${DEVLANE_PORT_REDIS}`
+- a phase-1-safe hybrid setup with static default ports in the generated files and printed commands
+- a compose sidecar that stays lane-aware through the compose project name even before host-catalog-backed port allocation lands
 
 ## 4. `examples/wowhead_cli/`
 

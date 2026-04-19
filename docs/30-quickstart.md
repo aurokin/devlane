@@ -1,8 +1,8 @@
 # Quickstart
 
-This is the fastest path to a first concrete success.
+This is the fastest path to a first concrete Phase 1 success.
 
-The walkthrough below describes the full target contract, including Phase 2 host-catalog behavior. If you are landing Phase 1 first, the success criteria are still `inspect`, `prepare`, and lifecycle clarity; host-catalog-backed `ports` / `ready` semantics arrive in Phase 2.
+The walkthrough below describes the current scaffold behavior. Host-catalog-backed `ports` / `ready` semantics arrive in Phase 2.
 
 ## 1. Create a local environment
 
@@ -31,7 +31,6 @@ You should see a manifest with:
 - a lane name
 - a compose project name
 - derived state/cache/runtime roots
-- a `ports` section (the minimal example declares a `web` port; `allocated: false` until `prepare` runs)
 - rendered hostnames under `publicHost`/`publicUrl` (the minimal example declares `host_patterns`; adapters without it get `null`)
 - generated output paths
 
@@ -49,8 +48,6 @@ This writes:
 - `.devlane/compose.env`
 - any template-driven files declared in the adapter
 
-If the adapter declares `ports`, `prepare` also allocates real host ports via the catalog at `~/.config/devlane/catalog.json`. Allocations are sticky — they persist across `up`/`down` cycles and machine reboots. See `65-host-catalog.md` for the model.
-
 ## 5. Bring the lane up
 
 ```bash
@@ -62,18 +59,18 @@ go run ./cmd/devlane up \
 
 Start with `--dry-run` so the exact Compose command is visible. The minimal example declares `compose_files`, so `up` drives Compose. For a bare-metal adapter (no `compose_files`), `up` is a no-op unless the adapter declares `runtime.run`, in which case it prints the rendered commands by default. See `75-baremetal-workflow.md`.
 
-`up` does not implicitly run `prepare`. If the adapter depends on allocated ports, generated outputs, or `.devlane/compose.env`, run `prepare` first.
+`up` does not implicitly run `prepare`. If the adapter depends on generated outputs or `.devlane/compose.env`, run `prepare` first.
 
 ## 6. Adopt a real repo
 
-For a real repo, scaffold an adapter from the repo's current shape:
+For a real repo, create `devlane.yaml` from the documented adapter schema:
 
 ```bash
 cd /path/to/your-repo
-devlane init
+$EDITOR devlane.yaml
 ```
 
-`init` detects whether the repo is containerized (compose file present), bare-metal (framework manifest, no compose), or CLI (neither), and writes a starter `devlane.yaml`. If the only candidate app root is a descendant of `cwd`, `init` scaffolds there and prints the selected path. Edit the file to point generated outputs at whatever your repo currently creates by wrappers, shell scripts, or hand-edited `.env.local` flows.
+`init` detects whether the repo is containerized (compose file present), bare-metal (framework manifest, no compose), or CLI (neither), and writes a starter `devlane.yaml`. If the repo looks mixed, detection stays conservative and points you at `--template hybrid-web`. If the only candidate app root is a descendant of `cwd`, `init` scaffolds there and prints the selected path.
 
 Then make the agent workflow:
 

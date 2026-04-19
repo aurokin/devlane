@@ -11,6 +11,7 @@ func InitDemoRepo(t *testing.T) string {
 	t.Helper()
 
 	repo := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(repo, ".xdg"))
 	mustWriteFile(t, filepath.Join(repo, "devlane.yaml"), `
 schema: 1
 app: demoapp
@@ -49,7 +50,7 @@ outputs:
     - template: "templates/app.env.tmpl"
       destination: ".devlane/generated/app.env"
 `)
-	mustWriteFile(t, filepath.Join(repo, "templates", "app.env.tmpl"), "APP_MODE={{env.APP_MODE}}\nDEVLANE_LANE={{lane.name}}\nPORT={{ports.web}}\n")
+	mustWriteFile(t, filepath.Join(repo, "templates", "app.env.tmpl"), "APP_MODE={{env.APP_MODE}}\nDEVLANE_LANE={{lane.name}}\nDEVLANE_PUBLIC_URL={{network.publicUrl}}\n")
 	mustWriteFile(t, filepath.Join(repo, "compose.yaml"), "services: {}\n")
 	mustWriteFile(t, filepath.Join(repo, "compose.devlane.yaml"), "services: {}\n")
 

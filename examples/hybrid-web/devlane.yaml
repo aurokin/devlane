@@ -47,7 +47,7 @@ ports:
   # Compose-managed sidecar: published on the host so bare-metal processes can
   # reach it. The catalog coordinates this with every other devlane repo.
   - name: redis
-    default: 6379
+    default: 6380
     pool_hint: [6380, 6399]
 
 worktree:

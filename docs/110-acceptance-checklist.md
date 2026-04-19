@@ -46,6 +46,7 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - `devlane init --from <path>` copies an existing adapter as the starting point
 - `devlane init --from <path>` validates the source adapter against the current schema before writing anything
 - `devlane init --from <path>` copies the source adapter literally; it does not re-root relative paths or rewrite `app`, `lane.host_patterns`, `runtime.compose_files`, template paths, or `worktree.seed`
+- `devlane init --from <path>` fails before writing when any copied relative path would escape the target repo root
 - `devlane init --from <path>` prints a post-copy review checklist for repo-coupled fields and warns when referenced source-relative inputs such as compose files or templates do not exist in the target repo
 - `devlane init` refuses to overwrite an existing `devlane.yaml` unless `--force` is passed
 - `devlane init` prompts for confirmation when stdin is a TTY; `--yes` / `--all` / a non-TTY stdin skips the prompt
@@ -94,7 +95,8 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - `prepare` tracks a sidecar hash per generated file under `.devlane/`
 - when an on-disk generated file has been hand-edited, `prepare` prints a one-line warning and writes anyway
 - first `prepare` with no sidecar hash quietly overwrites existing files with a one-line notice
-- `prepare` validates all repo-local writes that can fail before writing, stages repo-local writes to temp files, promotes them in deterministic order, and reports partial local state explicitly if a late promotion fails
+- `prepare` preserves existing regular-file mode bits for repo-local write targets and writes through existing symlinked file targets without replacing the symlink itself
+- `prepare` validates all repo-local writes that can fail before writing, stages repo-local writes to temp files, promotes them in deterministic order, and restores any already-promoted outputs if a late promotion fails
 
 ### Compose lifecycle
 
@@ -117,7 +119,7 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - `devlane down` is always a no-op for bare-metal (no process tracking)
 - `devlane status` for bare-metal prints the manifest-derived summary in Phase 1; Phase 2 extends it with `bound` / `free` / `unallocated` host-port results when the adapter declares `ports`
 - `runtime.run.commands[].command` renders with the same template scope as `outputs.generated`
-- once Phase 2 lands, if the adapter declares `ports` and any declared service is still `allocated: false`, `devlane up` fails before printing anything and points the user at `prepare`
+- once Phase 2 lands, if `devlane up` would consume prepared state (`runtime.run.commands` or compose) and the adapter declares `ports` with any service still `allocated: false`, it fails before printing anything and points the user at `prepare`
 
 ### Hybrid lifecycle
 
@@ -133,6 +135,7 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - `devlane doctor` is read-only and does not mutate lane or catalog state
 - `devlane doctor` checks only tool prerequisites and adapter/config sanity for the current repo
 - `devlane doctor` checks required external tools and declared compose files when the current adapter uses compose
+- for compose adapters, `devlane doctor` verifies the actual `docker compose` subcommand rather than only checking for a `docker` binary on `PATH`
 - `devlane doctor` does not claim app health, process ownership, or lane readiness beyond reporting missing prerequisites or config errors
 - `devlane doctor` exits non-zero when a prerequisite or adapter/config error is found
 - `devlane doctor` output distinguishes actionable failures from informational notes so it is not confused with `status`
@@ -160,11 +163,12 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - `inspect --json` always recomputes from adapter + catalog once Phase 2 lands; it never reads `.devlane/manifest.json`
 - `inspect --json` works before `prepare` has ever run; emits `ready: false` and `allocated: false` for pre-prepare ports
 - for pre-prepare dev lanes, `inspect --json` computes provisional `ports.<name>.port` values against the live catalog using the current allocator; these values are not reserved and may still change before `prepare`
-- for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port`
+- for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port` only when that fixture is currently usable; otherwise `inspect --json` fails with the same unavailability condition `prepare` would surface
 - `ready` remains an allocation-state signal only; it is not a proxy for successful repo-local writes or "prepare definitely ran"
 - `down` does not modify the catalog
 - stable lanes treat `stable_port` as a fixture when declared, otherwise `default`
 - stable-lane `prepare` fails loudly on any collision (no silent fallback to pool)
+- a same-checkout dev allocation does not override stable fixture semantics: stable `inspect --json` reports the fixture provisionally, and stable `prepare` updates that existing row onto the fixture when it is available
 - stable-vs-stable collision prints both adapter paths; no command to paste
 - stable-vs-offline-dev collision prints a ready-to-paste `reassign --lane ... --force && prepare`
 - stable-vs-bound-dev collision prints a runtime-shaped recipe: compose-backed lanes may use `devlane down`, but pure bare-metal lanes are told to stop their own process outside devlane before `reassign --force` / `prepare`; plain `reassign` would no-op once the old port is free
@@ -177,7 +181,8 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - `devlane reassign <service> --force` intentionally moves an offline checkout aside even when its current port is free
 - `prepare` validates repo-local failures before catalog work, computes catalog mutations under lock, stages repo-local writes to temp files, promotes them in deterministic order, and publishes the catalog only after those promotions succeed
 - a failed `prepare` or `reassign` write phase does not publish new catalog state or make `inspect --json` look more prepared than the last successful publish; existing `ready` state may still reflect prior allocations because `ready` is not a local-write-freshness bit
-- if a repo-local promotion fails after earlier outputs were already promoted, the command reports the partial local state explicitly and leaves the catalog unpublished
+- if a repo-local promotion fails after earlier outputs were already promoted, the command restores those outputs from snapshots and leaves the catalog unpublished
+- if catalog publish succeeds but lock release fails, repo-local outputs and published catalog state remain in place; the command reports the lock-close failure without rolling anything back
 - `devlane reassign <service> --lane <name>` can target another checkout of the same app by lane metadata when repo context is supplied by the current repo or by `--config` / `--cwd`
 - if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching selector row exists; any multiple match fails with a clear ambiguity error
 - top-level manifest fields are exactly: `schema`, `app`, `kind`, `ready`, `lane`, `paths`, `network`, `ports`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
@@ -205,6 +210,7 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 - once Phase 2 lands, bare-metal `status` reports `bound`, `free`, or `unallocated` for declared services without claiming process ownership, and pre-prepare services stay `unallocated` rather than probing provisional candidates
 - once Phase 2 lands, hybrid `status` adds host-port `bound` / `free` / `unallocated` results alongside compose `ps` output without inferring per-port substrate ownership
 - once Phase 2 lands, `devlane up` never commits provisional ports; it fails clearly and points at `prepare` when any declared port is still unallocated
+- compose-backed `devlane up` verifies `.devlane/compose.env` plus any declared `outputs.generated` against the current manifest/template state and fails clearly instead of starting from stale prepare-owned inputs
 
 ## Phase 3 acceptance
 

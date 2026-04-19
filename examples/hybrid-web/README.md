@@ -16,6 +16,11 @@ The host catalog allocates a port for every `ports[]` entry, so the
 bare-metal `web` process and the containerized `redis` sidecar both get
 coordinated port numbers.
 
+In this example, the printed Rails and Sidekiq commands render `{{ports.*}}`,
+`.env.local` gets the same values, and Compose publishes Redis through
+`${DEVLANE_PORT_REDIS}` from `.devlane/compose.env`. Concurrent lanes therefore
+do not share fixed host ports.
+
 ## Try it
 
 ```bash
