@@ -1,8 +1,8 @@
 # Quickstart
 
-This is the fastest path to a first concrete Phase 1 success.
+This is the fastest path to a first concrete success with the current implementation.
 
-The walkthrough below describes the current scaffold behavior. Host-catalog-backed `ports` / `ready` semantics arrive in Phase 2.
+The walkthrough below uses `--mode dev` for the examples so it avoids depending on the stable fixture being free on your machine.
 
 ## 1. Create a local environment
 
@@ -23,15 +23,18 @@ go tool gotestsum -- ./...
 go run ./cmd/devlane inspect \
   --config examples/minimal-web/devlane.yaml \
   --cwd examples/minimal-web \
+  --mode dev \
   --json
 ```
 
 You should see a manifest with:
 
 - a lane name
+- `ready: false` before the first `prepare`
 - a compose project name
 - derived state/cache/runtime roots
 - rendered hostnames under `publicHost`/`publicUrl` (the minimal example declares `host_patterns`; adapters without it get `null`)
+- a provisional `ports.web` object because the example declares `ports`
 - generated output paths
 
 ## 4. Generate local outputs
@@ -39,7 +42,8 @@ You should see a manifest with:
 ```bash
 go run ./cmd/devlane prepare \
   --config examples/minimal-web/devlane.yaml \
-  --cwd examples/minimal-web
+  --cwd examples/minimal-web \
+  --mode dev
 ```
 
 This writes:
@@ -48,12 +52,15 @@ This writes:
 - `.devlane/compose.env`
 - any template-driven files declared in the adapter
 
+After `prepare`, re-running `inspect --json` should show `ready: true` and `allocated: true` for the example's `web` port.
+
 ## 5. Bring the lane up
 
 ```bash
 go run ./cmd/devlane up \
   --config examples/minimal-web/devlane.yaml \
   --cwd examples/minimal-web \
+  --mode dev \
   --dry-run
 ```
 

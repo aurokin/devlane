@@ -8,8 +8,8 @@ Ship `devlane init` as the zero-friction adoption entry point for new repos, inc
 
 - `docs/40-cli-contract.md`
 - `docs/50-adapter-schema.md`
-- `docs/100-implementation-plan.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/phase-roadmap.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 

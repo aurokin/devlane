@@ -9,7 +9,7 @@ Rebuild the core domain engine so `inspect --json` and `prepare` are authoritati
 - `docs/40-cli-contract.md`
 - `docs/50-adapter-schema.md`
 - `docs/60-manifest-contract.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 

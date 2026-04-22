@@ -7,8 +7,8 @@ Close the rewrite by driving the full acceptance checklist to green and replacin
 ## Primary references
 
 - `docs/00-principles.md`
-- `docs/100-implementation-plan.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/phase-roadmap.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 

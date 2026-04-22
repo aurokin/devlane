@@ -9,8 +9,8 @@ Let devlane create and retire lanes end to end through `git worktree` integratio
 - `docs/40-cli-contract.md`
 - `docs/50-adapter-schema.md`
 - `docs/80-agent-playbook.md`
-- `docs/100-implementation-plan.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/phase-roadmap.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 

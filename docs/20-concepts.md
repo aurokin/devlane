@@ -46,8 +46,6 @@ Rule of thumb:
 - adapter-relative paths (`runtime.compose_files`, generated-template paths, output destinations, `worktree.seed`) resolve from `adapterRoot`
 - after normalization, those paths must remain inside `repoRoot`
 
-Phase 3 worktree lifecycle currently assumes `adapterRoot == repoRoot`. Subtree adapters in monorepos are supported for in-place commands such as `inspect`, `prepare`, `up`, and `status`, but `worktree create` / `worktree remove` are out of scope for them.
-
 ## Stable vs dev
 
 Stable and dev are not symmetric.
@@ -101,7 +99,7 @@ Agents should prefer the manifest over scraping ad hoc files.
 
 ## Host catalog
 
-The **host catalog** at `~/.config/devlane/catalog.json` is the tool-owned record of which `(app, repoPath, service)` owns which host port on this machine.
+The **host catalog** at `os.UserConfigDir()/devlane/catalog.json` is the tool-owned record of which `(app, repoPath, service)` owns which host port on this machine. In practice that is typically `~/.config/devlane/catalog.json` on Linux and `~/Library/Application Support/devlane/catalog.json` on macOS.
 
 It is the manifest's peer at host scope: the manifest is the contract inside one lane, the catalog is the contract across lanes and repos.
 

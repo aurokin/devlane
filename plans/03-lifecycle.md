@@ -9,7 +9,7 @@ Finish runtime command behavior for containerized, bare-metal, and hybrid adapte
 - `docs/40-cli-contract.md`
 - `docs/70-container-workflow.md`
 - `docs/75-baremetal-workflow.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 

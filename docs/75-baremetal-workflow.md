@@ -2,7 +2,7 @@
 
 This is the **default runtime pattern** in `devlane`. It is the shape for repos whose services run directly on the host — no containers, no shared ingress proxy, just processes binding real host ports.
 
-Most of this document describes the **Phase 2 target workflow** where the host catalog allocates and reports ports. In Phase 1, the implemented surface is narrower: `prepare` writes the manifest and generated outputs, `up` prints bare-metal commands without spawning them, and template scope excludes `ready` / `ports.<name>`.
+This document describes the current workflow. The host catalog already allocates and reports ports through `inspect`, `prepare`, and `status`. The remaining missing operator surface is the planned `port`, `reassign`, and `host *` command set.
 
 The opt-in alternative is containerized: see `70-container-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both (hybrid mode).
 
@@ -52,7 +52,7 @@ See `65-host-catalog.md` for the full allocation model, collision scenarios, and
 
 ## Optional: `runtime.run` for `devlane up` guidance
 
-`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits. It never implicitly runs `prepare`. In Phase 2, if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing anything and points the caller at `prepare`. Port-only adapters with no `runtime.run.commands` remain no-ops; `up` does not require `prepare` when there is nothing for devlane to start or print.
+`devlane up` is a no-op for bare-metal unless the adapter declares `runtime.run.commands`. When declared, `up` prints the rendered commands and exits. It never implicitly runs `prepare`. If the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing anything and points the caller at `prepare`. Port-only adapters with no `runtime.run.commands` remain no-ops; `up` does not require `prepare` when there is nothing for devlane to start or print.
 
 ```yaml
 runtime:
@@ -109,20 +109,17 @@ Services:
 
 Before the first `prepare`, declared services are still `allocated: false`. In that state, `status` reports them as `unallocated` and may show the current provisional candidate, but it does **not** probe the provisional port. Provisional values from `inspect --json` answer "what would `prepare` pick right now?", not "what is reserved for this lane already?"
 
-For stricter bindability checks the `--probe` machinery is still available via `devlane port <service> --probe`. For health, hit `manifest.ports.<service>.healthUrl` yourself.
+There is no dedicated `devlane port <service> --probe` command yet. For health, hit `manifest.ports.<service>.healthUrl` yourself. For bindability, use `status` for the current checkout or perform an OS-level probe yourself.
 
 ### Template scope
 
-`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates:
-
-- **Phase 1** — top-level Phase 1 manifest groups plus `env.<KEY>`. `ready` and `ports.<name>` are not available yet; referencing them is a render error.
-- **Phase 2** — adds top-level `ready` plus flattened `ports.<name>` values.
+`runtime.run.commands[].command` renders with the same variable scope as `outputs.generated` templates: top-level manifest groups plus `env.<KEY>`, including top-level `ready` and flattened `ports.<name>` values.
 
 New variables are added to both scopes together.
 
 ## What `prepare` produces
 
-In Phase 1, `prepare` writes the manifest, generated outputs, and `.devlane/compose.env` when compose is declared. Once Phase 2 lands, it also produces:
+`prepare` writes the manifest, generated outputs, and `.devlane/compose.env` when compose is declared. When the adapter declares `ports`, it also produces:
 
 - `manifest.ports.web.port`, `manifest.ports.api.port`, etc. — integers, the resolved ports
 - `manifest.ports.web.healthUrl` when `health_path` is declared on that port
@@ -130,7 +127,7 @@ In Phase 1, `prepare` writes the manifest, generated outputs, and `.devlane/comp
 - `DEVLANE_PORT_WEB=3100`, `DEVLANE_PORT_API=4000` in `.devlane/compose.env` when compose is also in use (otherwise compose env is omitted)
 - any template can reference `{{ports.web}}` to render a real number into generated config
 
-## Typical template (Phase 2)
+## Typical template
 
 A framework like Next.js reads `PORT` from `.env.local`. The adapter generates that file from a template:
 
@@ -156,7 +153,7 @@ Now `devlane prepare` produces a `.env.local` whose port numbers are coordinated
 1. `devlane inspect --json` — read the lane (works even before `prepare`; check `ready` before relying on port numbers)
 2. `devlane prepare` — allocate ports, render templates
 3. start the service (the app reads its port from the rendered config, or the agent runs `devlane up` to print the suggested commands)
-4. on conflict: check the manifest first, probe, then `reassign` only if needed (see `80-agent-playbook.md`)
+4. on conflict: check the manifest first, then use `status` or an OS-level probe to confirm whether something is bound on the allocated port (see `80-agent-playbook.md`)
 
 The agent never hard-codes port numbers. It reads them from the manifest every time.
 

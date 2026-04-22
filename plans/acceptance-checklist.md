@@ -1,6 +1,8 @@
 # Acceptance checklist
 
-Use this as the practical done bar. Read it in three layers:
+This file is a planning/acceptance artifact, not a statement that the current repo has already met every item. Read `docs/` first for current behavior, and use this checklist only when you need the target acceptance bar for planned work.
+
+Use this as the practical done bar. It is a **target acceptance bar**, not a statement that the current repo has already met every item. Read it in three layers:
 
 - global invariants that must stay true in every phase
 - phase-specific acceptance gates
@@ -14,7 +16,7 @@ Use this as the practical done bar. Read it in three layers:
 - `docs/10-when-to-use-this.md` gates adoption: multiple agents in parallel, many worktrees, or many repos with overlapping port conventions
 - `AGENTS.md` non-negotiable #1 matches principle #1 (state vs processes + supervised substrate)
 - `AGENTS.md` non-negotiable #11 (no application framework) is present and references `docs/00-principles.md`
-- proxy integration and stable deploy mechanics do not appear as planned phases in `docs/100-implementation-plan.md`
+- proxy integration and stable deploy mechanics do not appear as planned phases in `plans/phase-roadmap.md`
 
 ### Agent experience
 
@@ -150,10 +152,10 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 
 ### Host catalog
 
-- `~/.config/devlane/catalog.json` is created on first `prepare` and survives process exits
-- `~/.config/devlane/config.yaml` is optional and reasonable defaults apply when it is missing
-- malformed `~/.config/devlane/config.yaml` fails clearly and is covered by `schemas/config.schema.json` validation tests
-- catalog writes use `fcntl.flock` on `~/.config/devlane/catalog.json.lock` + atomic rename
+- `os.UserConfigDir()/devlane/catalog.json` is created on first `prepare` and survives process exits
+- `os.UserConfigDir()/devlane/config.yaml` is optional and reasonable defaults apply when it is missing
+- malformed `os.UserConfigDir()/devlane/config.yaml` fails clearly and is covered by `schemas/config.schema.json` validation tests
+- catalog writes use `fcntl.flock` on `catalog.json.lock` in the devlane user config dir + atomic rename
 - catalog write lock acquire timeout is 30 seconds; failure prints a clear message
 - catalog reads do not take the lock
 - `prepare` allocates a port for every adapter-declared service

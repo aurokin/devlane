@@ -1,6 +1,14 @@
 # Implementation plan
 
+This file is planning context, not a current-state product contract. Read `docs/` first for shipped behavior, and use Linear for execution state.
+
 This scaffold is intentionally phased.
+
+Current implementation note:
+
+- the shipped CLI is `init`, `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
+- host-catalog-backed `ready`, `ports`, sticky allocation, and host-port-aware `status` are already implemented
+- the remaining unscheduled operator surface is mostly `port`, `reassign`, `host *`, plus Phase 3 worktree lifecycle
 
 ## Phase 1 — contract first
 
@@ -8,8 +16,8 @@ Goal: make the shared manifest, generated-output flow, and lifecycle shape real 
 
 Deliverables:
 
-- stable adapter schema for the Phase 1 surface: optional `lane.host_patterns`, optional `runtime.run.commands`, generated outputs, and zero-friction adoption via `init`. Host-catalog-backed `ports` declarations, `ready`, and related commands land in Phase 2
-- stable manifest schema for the Phase 1 surface: lane identity, derived paths, network, compose, and generated-output metadata. Host-catalog-backed `ports` objects and the top-level `ready` flag are added in Phase 2
+- stable adapter schema for the initial surface: optional `lane.host_patterns`, optional `runtime.run.commands`, generated outputs, and zero-friction adoption via `init`
+- stable manifest schema for the initial surface: lane identity, derived paths, network, compose, generated-output metadata, and the current host-catalog-backed `ports` / `ready` fields
 - one path-anchor glossary shared across docs and schemas: `repoRoot` = Git worktree root, `adapterRoot` = directory containing `devlane.yaml`, `repoPath` = catalog identity path for the checkout root. Relative adapter paths resolve from `adapterRoot` and must remain inside `repoRoot`
 - working `inspect` that always recomputes from adapter + current checkout state, never reads manifest.json from disk. In Phase 2 it extends that recomputation with the host catalog
 - working `prepare` with strict validation for adapter load, template existence, destination containment, undefined template variables, and compose-file presence, plus sidecar-hash detection for hand-edited generated files
@@ -30,23 +38,23 @@ Deliverables:
 - `init`, `inspect`, `prepare`, `up`, `down`, `status`, and `doctor` all have explicit behavior documented and tested for containerized, bare-metal, hybrid, and no-lifecycle adapters without depending on host-catalog-backed coordination
 - `up` never implicitly mutates state, and the docs are explicit that once Phase 2 lands it fails whenever the adapter declares `ports` and any declared service is still unallocated
 - the template / bare-metal-command variable scope is described once and repeated consistently across the adapter, manifest, and workflow docs
-- the docs are explicit that in Phase 1, `ready` and `ports.<name>` are not available in template scope yet and referencing them is a render error
+- the docs are explicit about the current template scope, including top-level `ready` and flattened `ports.<name>` values
 - the acceptance checklist can point to this phase without relying on unnamed checklist "groups"
 
 ## Phase 2 — host catalog and port allocation
 
-Goal: make the host-scoped coordination layer authoritative across projects on the same machine.
+Goal: finish the host-scoped coordination layer as an operator surface across projects on the same machine.
 
 This phase is a prerequisite for worktree lifecycle automation because `worktree create` should register allocations into the catalog when a new lane is spun up.
 
 Deliverables:
 
-- host config at `~/.config/devlane/config.yaml` (user-owned)
-- config schema + tests for `~/.config/devlane/config.yaml`, including malformed-config behavior and explicit defaults when the file is absent: `port_range: 3000-9999`, `reserved: [22, 80, 443, 5432, 6379]`
-- host catalog at `~/.config/devlane/catalog.json` (tool-owned)
+- host config at `os.UserConfigDir()/devlane/config.yaml` (user-owned)
+- config schema + tests for `os.UserConfigDir()/devlane/config.yaml`, including malformed-config behavior and explicit defaults when the file is absent: `port_range: 3000-9999`, `reserved: [22, 80, 443, 5432, 6379]`
+- host catalog at `os.UserConfigDir()/devlane/catalog.json` (tool-owned)
 - concurrent-safe catalog writes: `fcntl.flock` on a sidecar lockfile + atomic `os.rename`, 30-second acquire timeout, POSIX-first (Windows deferred)
-- adapter `ports` field
-- manifest `ports` section with `allocated` flag, top-level `ready` flag, and `DEVLANE_PORT_*` env vars
+- finish hardening the already-landed adapter `ports` field
+- finish hardening the already-landed manifest `ports` section, top-level `ready` flag, and `DEVLANE_PORT_*` env vars
 - catalog-coupled publish semantics for `prepare` and the write half of `reassign`: preflight repo-local failures first, compute mutations under lock, stage and promote repo-local writes deterministically, roll back any already-promoted outputs if a late local promotion fails, and publish `catalog.json` only after required promotions succeed
 - sticky allocation with probing only for first-time allocation and explicit repair / audit commands; existing allocations are never re-probed by `prepare`. Stable lanes treat `stable_port` as the fixture when declared, otherwise `default`, and fail loudly on collision (three scenarios documented in `65-host-catalog.md`)
 - catalog identity model: `(app, repoPath, service)` is the durable key; `mode`, `lane`, and `branch` are refreshed metadata. In-place branch switching updates metadata and is not drift by itself

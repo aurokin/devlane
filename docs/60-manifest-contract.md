@@ -2,16 +2,11 @@
 
 The manifest is the shared language between humans, agents, wrappers, and automation.
 
-This document mixes two surfaces:
-
-- **Phase 1 current surface** — top-level `schema`, `app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs`
-- **Phase 2 target surface** — adds top-level `ready` plus `ports.<service> = {port, allocated, healthUrl}`
-
-When a section describes Phase-2-only fields, it says so explicitly.
+This document describes the **current** manifest surface. The shipped shape includes top-level `ready` plus `ports.<service> = {port, allocated, healthUrl}`.
 
 ## Example shape
 
-The JSON below is the **Phase 2 target shape**.
+The JSON below is the current shape.
 
 ```json
 {
@@ -69,8 +64,6 @@ The JSON below is the **Phase 2 target shape**.
 
 ## Top-level shape
 
-Phase 2 has ten fields at the top level. Phase 1 omits `ready` and `ports`.
-
 Ten fields at the top level:
 
 - `schema`, `app`, `kind` — identity primitives
@@ -86,7 +79,7 @@ There is no top-level `env` or `repo` block. Env is a *projection* computed at w
 
 There is also no `runtime.run` block in the manifest. Bare-metal run commands remain adapter-owned guidance, not manifest contract surface.
 
-## `ready` (Phase 2)
+## `ready`
 
 `manifest.ready` is a top-level boolean that answers one specific question: **is the catalog consistent with the adapter for this lane right now?**
 
@@ -104,7 +97,7 @@ This is the field agents should check first. It is cheaper than iterating `ports
 
 For each of those, there are separate surfaces:
 
-- **Bindability right now:** `devlane port <service> --probe` exits non-zero if something is on the port.
+- **Bindability right now:** use `devlane status` for the current checkout, or perform an OS-level probe yourself. A dedicated `devlane port <service> --probe` command is planned but not shipped yet.
 - **Is the lane running:** `devlane status` (runs `docker compose ps` for containerized; prints manifest summary for bare-metal).
 - **Health endpoints:** your own code, hitting `manifest.ports.<svc>.healthUrl`.
 
@@ -113,7 +106,7 @@ For each of those, there are separate surfaces:
 There are actually three different "is this fresh" questions tangled up in the manifest. `ready` only answers the first one cleanly:
 
 1. **Have all declared ports been allocated for this checkout's lane state?** → `ready`.
-2. **Is the catalog state still what the last successful publish wrote?** → fresh `inspect --json`. On-disk `.devlane/manifest.json` is a snapshot and can drift if another process has run `reassign` or `host gc`.
+2. **Is the catalog state still what the last successful publish wrote?** → fresh `inspect --json`. On-disk `.devlane/manifest.json` is a snapshot and can drift if another process has run `prepare` for the same checkout state or otherwise changed the live catalog inputs.
 3. **Are the repo-local generated outputs current right now?** → not represented as a separate manifest bit today; run `prepare` when generated files or `.devlane/compose.env` need to be refreshed.
 4. **Is the port actually bindable right now?** → `--probe`.
 
@@ -127,7 +120,7 @@ Agents that care about freshness should re-run `inspect --json`. Agents that nee
 
 `lane.repoRoot` is the absolute Git worktree root for the checkout. `lane.configPath` is the absolute path to the active `devlane.yaml`; `filepath.Dir(lane.configPath)` is the corresponding `adapterRoot` used to resolve relative adapter paths.
 
-## Ports (Phase 2)
+## Ports
 
 Each entry in `manifest.ports` is an object:
 
@@ -139,9 +132,9 @@ Ports are resolved from the host catalog at `prepare` time. Once allocated they 
 
 Stable lanes use `stable_port` as a fixture when declared; otherwise the adapter's `default` plays both roles (dev-lane hint + stable fixture). Dev lanes allocate from the pool, preferring any `pool_hint` range before falling back to the host-wide `port_range`. Both write catalog entries and render this manifest shape the same way; the distinction shows up only in collision handling at `prepare`.
 
-When the adapter declares no `ports`, the Phase 2 manifest emits `ports: {}` and `ready: true` (there are no allocations to wait on). The shape stays stable for consumers.
+When the adapter declares no `ports`, the manifest emits `ports: {}` and `ready: true` (there are no allocations to wait on). The shape stays stable for consumers.
 
-### `allocated: false` (Phase 2)
+### `allocated: false`
 
 `inspect --json` always recomputes the manifest in memory from the adapter and the current catalog. It never reads `.devlane/manifest.json` off disk, so it works before `prepare` has ever run.
 
@@ -168,7 +161,7 @@ Branch, lane label, and mode are metadata carried under `lane.*`. They are not t
 - `publicHost` — rendered hostname for the current lane mode, or `null` when `lane.host_patterns` is not declared
 - `publicUrl` — `http://<publicHost>` when `publicHost` is set, `null` otherwise. Convenience for consumers that want a URL without concatenating.
 
-Hostname-based discovery is optional. Bare-metal adapters that do not declare `lane.host_patterns` emit `publicHost: null` and rely on port-based discovery via `ports.<name>.port` once Phase 2 lands.
+Hostname-based discovery is optional. Bare-metal adapters that do not declare `lane.host_patterns` emit `publicHost: null` and rely on port-based discovery via `ports.<name>.port`.
 
 ## Env projection (not stored in the manifest)
 
@@ -187,7 +180,7 @@ DEVLANE_STATE_ROOT, DEVLANE_CACHE_ROOT, DEVLANE_RUNTIME_ROOT
 DEVLANE_COMPOSE_PROJECT, DEVLANE_PUBLIC_HOST, DEVLANE_PUBLIC_URL
 ```
 
-`DEVLANE_PORT_<NAME>` is Phase-2-only, because Phase 1 does not project catalog-backed ports yet.
+`DEVLANE_PORT_<NAME>` is emitted for allocated ports.
 
 Plus any `runtime.env` keys declared in the adapter, with `{public_host}`, `{public_url}`, `{lane_name}`, `{lane_slug}`, `{app}`, `{mode}`, `{branch}`, `{project_name}`, `{state_root}`, `{cache_root}`, `{runtime_root}` expanded.
 
@@ -200,10 +193,10 @@ The projection is not stored in `manifest.json` because it is 1:1 derivable from
 
 ## Template scope
 
-Templates see the top-level manifest groups for the active phase plus:
+Templates see:
 
-- **Phase 1** — `app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs`, plus `env.<KEY>`. `ready` and `ports.<name>` are not available yet; referencing them is a render error.
-- **Phase 2** — adds top-level `ready` plus `ports.<name>` flattened to the integer port number (not the object). Use `{{ports.web}}` to get `3100`, not the `{port, allocated, healthUrl}` object.
+- `app`, `kind`, `ready`, `lane`, `paths`, `network`, `compose`, `outputs`
+- `ports.<name>` flattened to the integer port number (not the object). Use `{{ports.web}}` to get `3100`, not the `{port, allocated, healthUrl}` object.
 - `env.<KEY>` — the env projection described above.
 
 New variables are added to the template scope and the `runtime.run.commands` scope together.

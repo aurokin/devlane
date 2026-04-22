@@ -1,70 +1,67 @@
 # Container workflow
 
-This is the **opt-in containerized pattern** in `devlane`. It is the recommended shape for repos whose services all run in containers — declare `compose_files` in the adapter to use it.
+This is the **opt-in containerized pattern** in `devlane`. Repos use it by declaring `compose_files` in the adapter.
 
-The default pattern is bare-metal: see `75-baremetal-workflow.md`. The two patterns can coexist on the same machine — the host catalog keeps their ports from colliding — and the same adapter can declare both (hybrid mode).
-
-The implemented Phase 1 surface covers compose lifecycle, generated outputs, and env projection for project/hostname data. Host-catalog-backed `ports`, `DEVLANE_PORT_<NAME>`, and allocation-aware status are Phase 2 additions documented here as the target state.
+The default pattern is bare-metal: see `75-baremetal-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both for hybrid mode.
 
 ## Why `devlane up` runs compose for you
 
-Compose is a supervisor: it owns PIDs, handles logs, supports `ps` / `logs` / `restart`, and survives your shell exiting. Running `docker compose up` for you is safe because the substrate already does the supervision work. This is the supervised-substrate rule (principle #1 in `00-principles.md`).
+Compose is a supervisor: it owns PIDs, handles logs, supports `ps` / `logs` / `restart`, and survives your shell exiting. Running `docker compose up` for you is safe because the substrate already does the supervision work.
 
 By contrast, devlane **prints** bare-metal commands declared under `runtime.run.commands` and never spawns them. If an adapter declares both, see "Hybrid pattern" below.
 
 ## Baseline pattern
 
-1. each lane gets its own Compose project name (derived from `lane.project_pattern`)
+1. each lane gets its own Compose project name
 2. services talk to each other by Compose service name on the lane network
-3. only ports the app actually needs on the host are bound (typically an ingress proxy, sometimes a database)
+3. only ports the app actually needs on the host are bound
 4. hostname-based discovery is available when the adapter declares `host_patterns`
 
-When the host has an ingress proxy (Caddy, Traefik, nginx) and a mechanism for `*.localhost` resolution, the adapter can declare `host_patterns` and lanes become reachable by name like `feature-x.agentchat.localhost`. This is the "polished" container setup.
+When the host has an ingress proxy and a mechanism for `*.localhost` resolution, the adapter can declare `host_patterns` and lanes become reachable by name like `feature-x.agentchat.localhost`.
 
-When the host has no proxy, containerized adapters still work — they just bind the necessary ports on the host (same as bare-metal) and rely on port-based discovery via the manifest.
+When the host has no proxy, containerized adapters still work. They just bind the necessary ports on the host and rely on port-based discovery via the manifest.
 
 ## Lifecycle commands
 
-- `devlane up` — runs `docker compose -p <project> -f <files> --env-file .devlane/compose.env --profile <profiles> up`. Compose does the supervision. In Phase 2, if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before running compose and points the caller at `prepare`.
-- `devlane down` — runs `docker compose -p <project> ... down`. Does **not** release catalog ports (see `65-host-catalog.md` on stickiness).
-- `devlane status` — runs `docker compose ps`.
-- `devlane up --dry-run` — prints the command instead of running it.
+- `devlane up` runs `docker compose -p <project> -f <files> --env-file .devlane/compose.env --profile <profiles> up`
+- `devlane down` runs `docker compose -p <project> ... down`
+- `devlane status` runs `docker compose ps`
+- `devlane up --dry-run` prints the command instead of running it
+- if the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before running compose and points the caller at `prepare`
+- compose-backed `up` also verifies the current prepare-owned inputs and fails clearly if `.devlane/compose.env` or declared generated outputs are stale
 
 ## When this pattern declares ports
 
-Declare `ports` in the adapter whenever a containerized service needs to bind a host port. Common cases:
+Declare `ports` whenever a containerized service needs to bind a host port. Common cases:
 
 - no ingress proxy is in use, and the app publishes its HTTP port directly to the host
-- a database or other service needs to be reachable from outside the compose network (a GUI tool, a migration script)
-- a non-HTTP service needs a host port (a gRPC server, a WebSocket endpoint)
+- a database or other service needs to be reachable from outside the compose network
+- a non-HTTP service needs a host port
 
-If the host has an ingress proxy and only the proxy binds ports, the adapter typically omits `ports` entirely. The proxy handles port binding at the compose layer.
+If the host has an ingress proxy and only the proxy binds ports, the adapter typically omits `ports` entirely.
 
 ## Hostnames are optional and orthogonal
 
-Hostnames are declarative — the adapter declares `host_patterns` when the user has a proxy or DNS mechanism that can resolve them. Devlane does not sniff the filesystem for Caddyfiles or Traefik labels; the adapter is the source of truth.
+Hostnames are declarative. The adapter declares `host_patterns` when the user has a proxy or DNS mechanism that can resolve them. Devlane does not inspect proxy config or talk to proxy APIs directly.
 
-Bare-metal apps can also have hostnames (Caddy reverse-proxying to localhost works fine). Containerized apps can omit hostnames (plain port-publish is fine too). The two axes are independent.
-
-Devlane does not talk to the proxy directly, ever. It emits `DEVLANE_PUBLIC_HOST` and `DEVLANE_PUBLIC_URL`; the user's compose labels or external proxy config consume those values. Direct proxy integration is cut from the roadmap (see `100-implementation-plan.md`).
+Bare-metal apps can also have hostnames. Containerized apps can omit them. The runtime pattern and the discovery surface are independent.
 
 ## What `devlane` generates
 
 When the compose pattern is in use, `prepare` writes `.devlane/compose.env` with:
 
-- `DEVLANE_COMPOSE_PROJECT` — the rendered project name
-- `DEVLANE_PUBLIC_HOST` — the rendered hostname (empty string when `host_patterns` is omitted)
-- `DEVLANE_PUBLIC_URL` — the full URL (empty string when `host_patterns` is omitted)
+- `DEVLANE_COMPOSE_PROJECT`
+- `DEVLANE_PUBLIC_HOST`
+- `DEVLANE_PUBLIC_URL`
+- `DEVLANE_PORT_<NAME>` for allocated declared ports
 - any entries from `runtime.env`
 
-Once Phase 2 lands, the env projection also includes `DEVLANE_PORT_<NAME>` for allocated `ports[]` services.
+Compose reads this file via `env_file` or the `--env-file` flag.
 
-Compose reads this file via `env_file` or the `--env-file` flag to pick up the lane-specific values.
-
-## Recommended Compose pattern (with proxy)
+## Recommended Compose pattern
 
 - keep app services on fixed container ports
-- do **not** publish those ports to the host unless needed
+- do not publish those ports to the host unless needed
 - use proxy labels or proxy config that reference `DEVLANE_PUBLIC_HOST`
 - use the lane-specific Compose project name to isolate networks and service names
 
@@ -79,7 +76,7 @@ services:
       - "traefik.http.services.${DEVLANE_COMPOSE_PROJECT}-web.loadbalancer.server.port=3000"
 ```
 
-This is not "proxy integration" in the Phase 4 sense — it is the env projection doing its job. Compose substitutes the variables, Traefik reads the labels, devlane never talks to Traefik.
+This is env projection, not proxy integration. Compose substitutes the variables; the proxy consumes them.
 
 ## Hybrid pattern
 
@@ -91,31 +88,13 @@ An adapter can declare **both** `compose_files` and `runtime.run.commands`. Comm
 
 `devlane up` behavior in hybrid mode:
 
-1. Print the rendered `runtime.run.commands` first (copy-pasteable, clearly labeled as "start these yourself").
+1. Print the rendered `runtime.run.commands` first.
 2. Run `docker compose up` for the supervised services.
 
-If compose fails, the bare-metal plan is still visible above the error — the user can fix compose, scroll up, paste the commands, and move on. Exit code follows compose.
-
-If the adapter declares `ports`, Phase 2 applies the same allocation gate here as everywhere else: `up` fails before printing commands or running compose while any declared service is still `allocated: false`.
+If the adapter declares `ports`, the same allocation gate applies here: `up` fails before printing commands or running compose while any declared service is still `allocated: false`.
 
 `devlane down` in hybrid mode runs `docker compose down`. The bare-metal processes are the user's to stop.
 
-## CLI-heavy repos
-
-CLI repos may still use the lane model even when they do not expose HTTP apps.
-
-In that case, the lane contract is still useful for:
-
-- stable wrapper ownership
-- XDG roots
-- cache isolation
-- optional sidecars such as Redis (via compose)
-- shell activation scripts
-
 ## Rule of thumb
 
-Read the manifest first. If the adapter declares `host_patterns` and you are behind an ingress proxy (Caddy, Traefik, `/etc/hosts`), use the rendered `publicHost` / `publicUrl`. Otherwise, use `manifest.ports.<service>.port` on localhost. Hostnames are orthogonal to runtime pattern: a bare-metal adapter can declare `host_patterns` if the host has DNS or a proxy resolving them, and a containerized adapter can skip them entirely.
-
-For CLI repos, prefer **wrapper or activation discovery**.
-
-Never guess. The manifest tells you which discovery mode the adapter chose.
+Read the manifest first. If the adapter declares `host_patterns` and the host resolves them, use `publicHost` / `publicUrl`. Otherwise, use `manifest.ports.<service>.port` on localhost. Never guess.

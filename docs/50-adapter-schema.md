@@ -143,8 +143,8 @@ runtime:
 
 Commands accept `{{...}}` templating. The scope is the same as `outputs.generated` templates:
 
-- **Phase 1** — top-level Phase 1 manifest groups (`app`, `kind`, `lane`, `paths`, `network`, `compose`, `outputs`) plus `env.<KEY>`. `ready` and `ports.<name>` are not available yet; referencing them is a render error.
-- **Phase 2** — adds top-level `ready` plus flattened `ports.<name>` values. `ports.<name>` resolves to the integer port number, not the `{port, allocated, healthUrl}` object.
+- top-level manifest groups (`app`, `kind`, `ready`, `lane`, `paths`, `network`, `compose`, `outputs`) plus `env.<KEY>`
+- flattened `ports.<name>` values. `ports.<name>` resolves to the integer port number, not the `{port, allocated, healthUrl}` object.
 
 New variables are added to both scopes together.
 
@@ -152,13 +152,13 @@ New variables are added to both scopes together.
 
 Optional. A list of named port needs.
 
-- `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`) once Phase 2 host-catalog-backed ports land
+- `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`)
 - `default` — preferred port, tried first during dev-lane allocation. Plays the stable-fixture role too when `stable_port` is absent.
 - `health_path` — optional HTTP path. When declared, the manifest emits `ports.<name>.healthUrl` as `http://localhost:<port><health_path>`. Devlane itself does not probe this URL; it is for agents and tooling.
 - `stable_port` — optional. When declared, the stable lane asserts this port as a fixture at `prepare` time. Omit to let `default` play both roles. Declaring `stable_port` lets teams have a distinct dev-lane preference (via `default`) from the stable fixture.
 - `pool_hint` — optional `[low, high]` pair. Dev-lane pool allocation walks this subrange first before falling back to the host-wide `port_range`. Must sit inside the host range; if not, the walk falls back immediately.
 
-The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move during ordinary dev-lane churn, with `devlane reassign`, `devlane host gc`, and stable reclaiming the current checkout's fixture as the explicit exceptions. See `65-host-catalog.md` for the allocation model, including the fixture semantics that apply to stable lanes.
+The adapter declares what the app needs. The shared tool resolves real numbers via the host catalog. Once allocated, ports are sticky — they do not move during ordinary dev-lane churn, with future repair/cleanup flows and stable reclaiming the current checkout's fixture as the explicit exceptions. See `65-host-catalog.md` for the allocation model, including the fixture semantics that apply to stable lanes.
 
 If `ports` is omitted, no ports are allocated. This is appropriate for pure-CLI repos that do not bind host ports.
 
@@ -173,11 +173,11 @@ reserved:
   - 5555      # load-test harness
 ```
 
-Merged with the host-wide `reserved` in `~/.config/devlane/config.yaml` at allocation time. Additive only — adapter `reserved` cannot un-reserve a port the host has reserved. Use this when a specific port is off-limits for *this app* even though the host is fine with it (e.g., the app's CI uses it for load testing).
+Merged with the host-wide `reserved` in `os.UserConfigDir()/devlane/config.yaml` at allocation time. Additive only — adapter `reserved` cannot un-reserve a port the host has reserved. Use this when a specific port is off-limits for *this app* even though the host is fine with it (e.g., the app's CI uses it for load testing).
 
 ### `worktree`
 
-Optional. Controls Phase 3 worktree lifecycle behavior.
+Optional. Reserved for future worktree lifecycle automation; no shipped CLI command consumes it today.
 
 ```yaml
 worktree:
@@ -196,7 +196,7 @@ worktree:
 
 There is no default seed list. Devlane does not guess which files are sensitive or which secrets should follow a worktree. Each adapter declares its own list, explicitly. See principle #6 in `00-principles.md`.
 
-Phase 3 worktree commands are supported only when `adapterRoot == repoRoot`. Subtree adapters in monorepos are still valid for in-place commands such as `inspect`, `prepare`, `up`, and `status`, but `worktree create` / `worktree remove` are out of scope for them.
+When worktree lifecycle support lands, it is expected to apply only when `adapterRoot == repoRoot`. Subtree adapters in monorepos remain valid for in-place commands such as `inspect`, `prepare`, `up`, and `status`.
 
 ### Seed vs generated — two different categories of file
 

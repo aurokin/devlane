@@ -39,12 +39,12 @@ The adapter should never be the place where product logic lives.
 
 Agents should read `inspect --json`. It always recomputes the manifest in memory from the adapter plus the current catalog. It never reads `.devlane/manifest.json` off disk.
 
-`.devlane/manifest.json` exists for wrappers, external tools, and humans who want a static file to eyeball. It is a snapshot of what was true at the last `prepare`. It can drift: another process may have reassigned a port, another agent may have run `host gc`, an adapter field may have changed.
+`.devlane/manifest.json` exists for wrappers, external tools, and humans who want a static file to eyeball. It is a snapshot of what was true at the last `prepare`. It can drift if another process has changed the live catalog inputs or the adapter since then.
 
 Rules of thumb:
 
 - Agents that care about freshness always call `inspect --json`.
-- Agents that want to check "is this port actually bindable right this second" use `devlane port <svc> --probe`. That is a different question from "is it allocated."
+- Agents that want to check "is this port actually bindable right this second" use `devlane status` for the current checkout or an OS-level probe. That is a different question from "is it allocated."
 - The `ready` field in the manifest says "the catalog has entries for every declared port." Fresh from `inspect --json`, snapshot on disk, and orthogonal to bindability.
 
 ## 4. Stable is asymmetric
@@ -71,7 +71,7 @@ Once a `(app, repoPath, service)` allocation exists, it does not move during ord
 - `down` does not release.
 - `prepare` does not re-probe existing allocations.
 
-The usual commands that move a port are `devlane reassign <service>` (explicit repair, scoped, idempotent) and `devlane host gc` (explicit cleanup by staleness heuristics). The one stable-specific exception is the current checkout flipping from dev mode to stable mode: if its existing row is on a dev-only port, `prepare` / `inspect --json` must still honor the stable fixture instead of treating the dev port as authoritative.
+The usual ways a port will eventually move are explicit repair and cleanup flows. Those operator commands are planned, not fully shipped yet. The one stable-specific exception that already exists is the current checkout flipping from dev mode to stable mode: if its existing row is on a dev-only port, `prepare` / `inspect --json` must still honor the stable fixture instead of treating the dev port as authoritative.
 
 Stickiness is what makes lane identity stable across stop/start cycles, worktree shelving, and machine reboots. Agents and external tools can cache port information with confidence. Cacheability is the whole point.
 

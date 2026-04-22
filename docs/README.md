@@ -19,8 +19,7 @@ Then choose a branch:
 - Need the host-wide port and lane model? Read `65-host-catalog.md`.
 - Need the container pattern? Read `70-container-workflow.md`.
 - Need the bare-metal pattern? Read `75-baremetal-workflow.md`.
-- Need the roadmap? Read `100-implementation-plan.md`.
-- Need done criteria? Read `110-acceptance-checklist.md`.
+- Need planning or acceptance context? Read `../plans/README.md`.
 
 ## The one-sentence summary
 

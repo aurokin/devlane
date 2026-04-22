@@ -9,7 +9,7 @@ Expose the host catalog subsystem through the operational commands agents and hu
 - `docs/40-cli-contract.md`
 - `docs/65-host-catalog.md`
 - `docs/80-agent-playbook.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 

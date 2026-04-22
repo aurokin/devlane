@@ -28,7 +28,7 @@ Then branch by task:
 - **Port or host catalog work:** `docs/65-host-catalog.md`, then `docs/80-agent-playbook.md` for the conflict-handling protocol
 - **Runtime patterns (containerized or bare-metal):** `docs/70-container-workflow.md` and `docs/75-baremetal-workflow.md`, then the matching examples under `examples/`
 - **Repo adoption work:** `docs/90-example-integrations.md`, then `examples/agentchat/` or `examples/wowhead_cli/`
-- **Planning / acceptance work:** `docs/100-implementation-plan.md` and `docs/110-acceptance-checklist.md`
+- **Planning / acceptance work:** `plans/README.md`, then `plans/phase-roadmap.md` and `plans/acceptance-checklist.md`
 - **Prompt handoff work:** `prompts/README.md`
 
 ## Non-negotiables
@@ -43,13 +43,13 @@ These rules are the design center. Do not casually violate them. The full reason
 6. **Compose project names include the lane slug.** That is the baseline container namespace.
 7. **Keep core repo-agnostic.** App-specific env var names, wrapper names, and product rules live in adapters and examples, not in the core library.
 8. **Prefer additive, machine-readable contracts.** If the behavior changes, update docs, schemas, examples, and tests together.
-9. **The host catalog is tool-owned.** `~/.config/devlane/catalog.json` is written by the tool and read by everyone else. Humans and agents should not hand-edit it. User configuration lives in `~/.config/devlane/config.yaml`, which the tool only reads.
-10. **Port allocations are sticky.** Once a `(app, repoPath, service)` allocation exists, it does not move during ordinary dev-lane churn except via explicit `reassign` or `gc`. The stable-specific exception is reclaiming the current checkout's fixture when a same-checkout dev allocation would otherwise make stable report the wrong port. Do not introduce code paths that re-probe existing allocations silently.
+9. **The host catalog is tool-owned.** The catalog lives under `os.UserConfigDir()/devlane` (`~/.config/devlane` on Linux, `~/Library/Application Support/devlane` on macOS). Humans and agents should not hand-edit it. User configuration lives alongside it in `config.yaml`, which the tool only reads.
+10. **Port allocations are sticky.** Once a `(app, repoPath, service)` allocation exists, it does not move during ordinary dev-lane churn except via explicit repair/cleanup flows. The stable-specific exception is reclaiming the current checkout's fixture when a same-checkout dev allocation would otherwise make stable report the wrong port. Do not introduce code paths that re-probe existing allocations silently.
 11. **The tool does not become an application framework.** Proxy integration, deploy mechanics, process supervision, log collection, and credential management beyond the explicit `worktree.seed` copy are permanently out of scope. When a proposal feels useful but drifts into these territories, decline it and point at `docs/00-principles.md`.
 
 ## Working style
 
-- Start from the acceptance checklist before adding features.
+- Start from the current contract docs first, then use `plans/acceptance-checklist.md` when you need the active acceptance scope.
 - Keep functions small and typed.
 - Prefer deterministic outputs over clever inference.
 - If you add a new adapter field, update:
@@ -102,8 +102,8 @@ go tool gofumpt -w .
 go tool goimports -w ./cmd ./internal
 go tool golangci-lint run
 go tool gotestsum -- ./...
-go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
-go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
+go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --mode dev --json
+go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --mode dev
 ```
 
 ## What to avoid

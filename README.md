@@ -34,34 +34,31 @@ Repos can still generate whatever app-specific files they need, but those files 
 
 ## What is already implemented in this kit
 
-The scaffold is intentionally small but useful:
+The scaffold is intentionally small but already includes part of the host-catalog model:
 
 - reads a declarative `devlane.yaml`
 - derives a lane manifest from the current checkout
+- computes host-catalog-backed `ready` plus `ports.<service> = {port, allocated, healthUrl}` when the adapter declares `ports`
 - writes `.devlane/manifest.json`
 - writes `.devlane/compose.env` (when `compose_files` is declared)
 - renders repo-local generated files from templates
+- projects `DEVLANE_PORT_*` into generated env when ports have been allocated
+- allocates sticky per-lane ports during `prepare`, with stable fixtures treated strictly
 - builds lane-aware `docker compose` commands for containerized adapters; prints (never runs) bare-metal commands from `runtime.run.commands`
-- exposes `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
+- exposes `init`, `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
 
-## What Phase 2 adds
+The host catalog itself lives under the OS user config directory: `os.UserConfigDir()/devlane`. In practice that is typically `~/.config/devlane` on Linux and `~/Library/Application Support/devlane` on macOS.
 
-Phase 2 is the **host catalog** — a shared, tool-owned file at `~/.config/devlane/catalog.json` that makes the port-related contract authoritative across every `devlane`-managed repo on the machine. It adds:
+## What is not implemented yet
 
-- `ports` declarations in the adapter (with optional `health_path`)
-- `ports` (as `{port, allocated, healthUrl?}` objects) and a top-level `ready` flag in the manifest, plus `DEVLANE_PORT_*` env
-- sticky, per-lane allocation with stable ports treated as fixtures (strict-fail on collision — see `docs/65-host-catalog.md`)
-- durable allocation identity keyed by `(app, repoPath, service)` with `lane` / `mode` / `branch` refreshed as metadata
-- concurrent-safe catalog writes via `fcntl.flock` + atomic rename (POSIX-first)
-- `devlane port <service>` with `--verbose` and `--probe` (TCP probing on both `0.0.0.0` and `::`)
-- `devlane reassign <service>` (idempotent, scoped, supports `--lane` and `--force`)
+The remaining unshipped surface is mostly operator and lifecycle work around the catalog:
+
+- `devlane port <service>`
+- `devlane reassign <service>`
 - `devlane host status`, `host doctor`, `host gc`
+- `devlane worktree create` / `worktree remove`
 
-The docs and schemas describe the Phase 2 target state. See `docs/65-host-catalog.md` and `docs/100-implementation-plan.md`.
-
-Phase 1 remains intentionally smaller: `inspect`, `prepare`, generated outputs, and lifecycle behavior land before host-catalog-backed `ports`, `ready`, `reassign`, and `host *` commands become acceptance requirements.
-
-Phase 3 adds minimal worktree lifecycle (`create` + `remove`, with adapter-declared `worktree.seed` copying credentials). That is the last planned phase — devlane stops there rather than drifting into proxy integration or deploy mechanics. See `docs/00-principles.md` for why.
+Those commands are not part of the shipped CLI. `docs/` describes current behavior; planning detail lives under `plans/`.
 
 ## Start here
 
@@ -76,8 +73,8 @@ go tool gofumpt -w .
 go tool goimports -w ./cmd ./internal
 go tool golangci-lint run
 go tool gotestsum -- ./...
-go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --json
-go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web
+go run ./cmd/devlane inspect --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --mode dev --json
+go run ./cmd/devlane prepare --config examples/minimal-web/devlane.yaml --cwd examples/minimal-web --mode dev
 ```
 
 ## Go Tooling
@@ -106,8 +103,7 @@ go tool gotestsum -- ./...
 - `docs/70-container-workflow.md` — containerized pattern
 - `docs/75-baremetal-workflow.md` — bare-metal pattern
 - `docs/90-example-integrations.md` — how this maps onto real repos
-- `docs/100-implementation-plan.md` — phased roadmap
-- `docs/110-acceptance-checklist.md` — done criteria
+- `plans/README.md` — planning and acceptance artifacts outside the primary docs path
 
 ## Project layout
 
@@ -119,21 +115,22 @@ devlane-agent-kit/
 ├── docs/
 ├── examples/
 ├── internal/
+├── plans/
 ├── prompts/
 ├── schemas/
 └── .golangci.yml
 ```
 
-## Suggested first milestone
+## Suggested next milestone
 
-Keep phase 1 narrow and dependable:
+Keep the remaining implementation work narrow and dependable:
 
 1. adopt `devlane.yaml` in one repo
 2. make `inspect --json` authoritative
 3. make `prepare` generate the files that repo currently hand-manages
 4. make `up` and `down` lane-aware via Compose project names
-5. keep host-catalog-backed `ports` / `ready` semantics and conflict repair in Phase 2
-6. delay worktree create/remove until the manifest and adapter contracts feel stable
+5. finish the remaining operator surface around the already-shipped host catalog (`port`, `reassign`, `host *`)
+6. delay worktree create/remove until the manifest and host-catalog contracts feel stable
 
 ## Why this is docs-first
 

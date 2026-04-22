@@ -9,7 +9,7 @@ Build the host-wide coordination subsystem that makes sticky port allocation rea
 - `docs/60-manifest-contract.md`
 - `docs/65-host-catalog.md`
 - `docs/80-agent-playbook.md`
-- `docs/110-acceptance-checklist.md`
+- `plans/acceptance-checklist.md`
 
 ## Scope
 
