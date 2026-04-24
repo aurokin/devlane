@@ -79,6 +79,33 @@ func TestBeginPrepareSerializesCatalogWriters(t *testing.T) {
 	}
 }
 
+func TestRelativeXDGConfigHomeFallsBackToUserConfigDir(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	userHome := t.TempDir()
+	t.Setenv("HOME", userHome)
+	t.Setenv("XDG_CONFIG_HOME", "relative-config")
+	adapter, lane := buildLane(t, repo, "")
+
+	if _, _, err := portalloc.Prepare(adapter, lane); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join("relative-config", "devlane", "catalog.json")); !os.IsNotExist(err) {
+		t.Fatalf("relative XDG_CONFIG_HOME should not be used, stat err=%v", err)
+	}
+
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("resolve user config dir: %v", err)
+	}
+	if !filepath.IsAbs(userConfigDir) {
+		userConfigDir = filepath.Join(userHome, ".config")
+	}
+	if _, err := os.Stat(filepath.Join(userConfigDir, "devlane", "catalog.json")); err != nil {
+		t.Fatalf("expected catalog under user config dir: %v", err)
+	}
+}
+
 func TestPreparePersistsModeAndBranchMetadata(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 	sharedConfig := t.TempDir()

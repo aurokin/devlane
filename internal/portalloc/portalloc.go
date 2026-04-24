@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -585,7 +586,14 @@ func defaultLegacyBranch(row *allocation) string {
 
 func configDir() (string, error) {
 	if xdgConfigHome := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdgConfigHome != "" {
-		return filepath.Join(xdgConfigHome, "devlane"), nil
+		if filepath.IsAbs(xdgConfigHome) {
+			return filepath.Join(xdgConfigHome, "devlane"), nil
+		}
+		root, err := defaultUserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(root, "devlane"), nil
 	}
 
 	root, err := os.UserConfigDir()
@@ -593,6 +601,22 @@ func configDir() (string, error) {
 		return "", fmt.Errorf("resolve user config dir: %w", err)
 	}
 	return filepath.Join(root, "devlane"), nil
+}
+
+func defaultUserConfigDir() (string, error) {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		root, err := os.UserConfigDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user config dir: %w", err)
+		}
+		return root, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user home dir: %w", err)
+	}
+	return filepath.Join(home, ".config"), nil
 }
 
 func configPath() (string, error) {
