@@ -215,6 +215,10 @@ func alignPathWithEquivalentRoot(root, path string) (string, bool) {
 	for range strings.Split(relative, string(filepath.Separator)) {
 		aligned = filepath.Dir(aligned)
 	}
+	alignedCanonical, err := util.CanonicalPath(aligned)
+	if err != nil || alignedCanonical != canonicalRoot {
+		return "", false
+	}
 	return aligned, true
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/auro/devlane/internal/config"
 	"github.com/auro/devlane/internal/manifest"
 	"github.com/auro/devlane/internal/testutil"
+	"github.com/auro/devlane/internal/util"
 )
 
 func TestManifestUsesBranchAsDevLane(t *testing.T) {
@@ -350,6 +351,43 @@ outputs:
 	}
 	if laneManifest.Outputs.Generated[0].Destination != filepath.Join(appDir, ".devlane", "generated", "app.env") {
 		t.Fatalf("unexpected generated destination: %s", laneManifest.Outputs.Generated[0].Destination)
+	}
+}
+
+func TestManifestDoesNotDeriveRepoRootFromSymlinkedSubdirectoryCWD(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	cwdTarget := filepath.Join(repo, "apps", "web")
+	if err := os.MkdirAll(cwdTarget, 0o755); err != nil {
+		t.Fatalf("mkdir cwd target: %v", err)
+	}
+	symlinkCWD := filepath.Join(t.TempDir(), "web-link")
+	if err := os.Symlink(cwdTarget, symlinkCWD); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	configPath := filepath.Join(repo, "devlane.yaml")
+	adapter, err := config.LoadAdapter(configPath)
+	if err != nil {
+		t.Fatalf("LoadAdapter returned error: %v", err)
+	}
+
+	laneManifest, err := manifest.Build(adapter, manifest.Options{
+		CWD:        symlinkCWD,
+		ConfigPath: configPath,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	canonicalRepo, err := util.CanonicalPath(repo)
+	if err != nil {
+		t.Fatalf("canonicalize repo: %v", err)
+	}
+	if laneManifest.Lane.RepoRoot != canonicalRepo {
+		t.Fatalf("expected git repo root %s, got %s", canonicalRepo, laneManifest.Lane.RepoRoot)
+	}
+	if laneManifest.Paths.Manifest != filepath.Join(canonicalRepo, ".devlane", "manifest.json") {
+		t.Fatalf("expected manifest path anchored at repo root, got %s", laneManifest.Paths.Manifest)
 	}
 }
 
