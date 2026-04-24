@@ -90,34 +90,10 @@ func TestPrepareWithRollbackRestoresSymlinkTargetsWithoutReplacingLinksWhenApply
 		t.Fatal("expected compose env path")
 	}
 
-	composeTarget := filepath.Join(repo, ".devlane", "shared", "compose.env")
-	if err := os.MkdirAll(filepath.Dir(composeTarget), 0o755); err != nil {
-		t.Fatalf("mkdir compose target dir: %v", err)
-	}
-	if err := os.WriteFile(composeTarget, []byte("OLD=1\n"), 0o644); err != nil {
-		t.Fatalf("write compose target: %v", err)
-	}
-	if err := os.RemoveAll(*laneManifest.Paths.ComposeEnv); err != nil {
-		t.Fatalf("remove compose env path: %v", err)
-	}
-	if err := os.Symlink(composeTarget, *laneManifest.Paths.ComposeEnv); err != nil {
-		t.Skipf("symlink unsupported: %v", err)
-	}
+	composeTarget := createSymlinkedFileInternal(t, *laneManifest.Paths.ComposeEnv, filepath.Join(repo, ".devlane", "shared", "compose.env"), "OLD=1\n")
 
 	renderedPath := filepath.Join(repo, ".devlane", "generated", "app.env")
-	renderedTarget := filepath.Join(repo, ".devlane", "shared", "app.env")
-	if err := os.WriteFile(renderedTarget, []byte("OLD_GENERATED=1\n"), 0o644); err != nil {
-		t.Fatalf("write rendered target: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(renderedPath), 0o755); err != nil {
-		t.Fatalf("mkdir rendered dir: %v", err)
-	}
-	if err := os.RemoveAll(renderedPath); err != nil {
-		t.Fatalf("remove rendered path: %v", err)
-	}
-	if err := os.Symlink(renderedTarget, renderedPath); err != nil {
-		t.Skipf("symlink unsupported: %v", err)
-	}
+	renderedTarget := createSymlinkedFileInternal(t, renderedPath, filepath.Join(repo, ".devlane", "shared", "app.env"), "OLD_GENERATED=1\n")
 
 	composeLink, err := os.Readlink(*laneManifest.Paths.ComposeEnv)
 	if err != nil {
@@ -152,29 +128,9 @@ func TestPrepareWithRollbackRestoresSymlinkTargetsWithoutReplacingLinksWhenApply
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	manifestPayload, readErr := os.ReadFile(laneManifest.Paths.Manifest)
-	if readErr != nil {
-		t.Fatalf("read restored manifest: %v", readErr)
-	}
-	if string(manifestPayload) != "old manifest\n" {
-		t.Fatalf("expected manifest rollback, got %q", manifestPayload)
-	}
-
-	composePayload, readErr := os.ReadFile(composeTarget)
-	if readErr != nil {
-		t.Fatalf("read restored compose target: %v", readErr)
-	}
-	if string(composePayload) != "OLD=1\n" {
-		t.Fatalf("expected compose target rollback, got %q", composePayload)
-	}
-
-	renderedPayload, readErr := os.ReadFile(renderedTarget)
-	if readErr != nil {
-		t.Fatalf("read restored rendered target: %v", readErr)
-	}
-	if string(renderedPayload) != "OLD_GENERATED=1\n" {
-		t.Fatalf("expected rendered target rollback, got %q", renderedPayload)
-	}
+	assertFilePayloadInternal(t, laneManifest.Paths.Manifest, "old manifest\n")
+	assertFilePayloadInternal(t, composeTarget, "OLD=1\n")
+	assertFilePayloadInternal(t, renderedTarget, "OLD_GENERATED=1\n")
 
 	assertSymlinkInternal(t, *laneManifest.Paths.ComposeEnv, composeLink)
 	assertSymlinkInternal(t, renderedPath, renderedLink)
@@ -197,6 +153,9 @@ func TestPrepareWithRollbackRejectsMissingSymlinkTargetsBeforePromotion(t *testi
 	composeTarget := filepath.Join(t.TempDir(), "shared", "compose.env")
 	if err := os.RemoveAll(*laneManifest.Paths.ComposeEnv); err != nil {
 		t.Fatalf("remove compose env path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(*laneManifest.Paths.ComposeEnv), 0o755); err != nil {
+		t.Fatalf("mkdir compose env dir: %v", err)
 	}
 	if err := os.Symlink(composeTarget, *laneManifest.Paths.ComposeEnv); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
@@ -314,6 +273,40 @@ func assertSymlinkInternal(t *testing.T, path, wantTarget string) {
 	if gotTarget != wantTarget {
 		t.Fatalf("expected symlink %s -> %s, got %s", path, wantTarget, gotTarget)
 	}
+}
+
+func assertFilePayloadInternal(t *testing.T, path, want string) {
+	t.Helper()
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(payload) != want {
+		t.Fatalf("expected %s payload %q, got %q", path, want, payload)
+	}
+}
+
+func createSymlinkedFileInternal(t *testing.T, linkPath, targetPath, payload string) string {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		t.Fatalf("mkdir symlink target dir: %v", err)
+	}
+	if err := os.WriteFile(targetPath, []byte(payload), 0o644); err != nil {
+		t.Fatalf("write symlink target: %v", err)
+	}
+	if err := os.RemoveAll(linkPath); err != nil {
+		t.Fatalf("remove symlink path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(linkPath), 0o755); err != nil {
+		t.Fatalf("mkdir symlink link dir: %v", err)
+	}
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	return targetPath
 }
 
 func buildDemoManifestInternal(t *testing.T) (string, *config.AdapterConfig, manifest.Manifest) {
