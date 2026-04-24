@@ -3,11 +3,13 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -732,15 +734,49 @@ func TestStatusPrintsUnallocatedPortRowsForBareMetal(t *testing.T) {
 	if !strings.Contains(stdout, "Services:\n") {
 		t.Fatalf("expected services section, got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "web    port 3000  unallocated") {
-		t.Fatalf("expected unallocated port row, got:\n%s", stdout)
+	row := serviceStatusRow(t, stdout, "web")
+	if row.Status != "unallocated" {
+		t.Fatalf("expected unallocated port row, got %#v in:\n%s", row, stdout)
+	}
+	if row.Port <= 0 {
+		t.Fatalf("expected provisional port in unallocated row, got %#v", row)
 	}
 	if strings.Contains(stdout, "docker compose") {
 		t.Fatalf("did not expect compose status output for bare-metal adapter, got:\n%s", stdout)
 	}
 }
 
-func TestStatusPrintsPortRowsBeforeComposeStatus(t *testing.T) {
+func TestStatusPrintsFreePortRowsForPreparedBareMetal(t *testing.T) {
+	repo := initBareMetalRepo(t)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	allocatedPort := preparedPort(t, repo, "web")
+	code, stdout, stderr = runCLI(t, []string{
+		"status",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected status exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	row := serviceStatusRow(t, stdout, "web")
+	if row.Port != allocatedPort || row.Status != "free" {
+		t.Fatalf("expected free row for allocated port %d, got %#v in:\n%s", allocatedPort, row, stdout)
+	}
+	if strings.Contains(stdout, "docker compose") {
+		t.Fatalf("did not expect compose status output for bare-metal adapter, got:\n%s", stdout)
+	}
+}
+
+func TestStatusPrintsBoundPortRowsBeforeComposeStatus(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 
 	code, stdout, stderr := runCLI(t, []string{
@@ -752,9 +788,10 @@ func TestStatusPrintsPortRowsBeforeComposeStatus(t *testing.T) {
 		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	allocatedPort := preparedPort(t, repo, "web")
+	listener, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", allocatedPort))
 	if err != nil {
-		t.Fatalf("listen on allocated port: %v", err)
+		t.Fatalf("listen on allocated port %d: %v", allocatedPort, err)
 	}
 	defer listener.Close()
 
@@ -767,11 +804,81 @@ func TestStatusPrintsPortRowsBeforeComposeStatus(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected status exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "Services:\n  web    port 3000  bound\n") {
-		t.Fatalf("expected bound port row before compose output, got:\n%s", stdout)
+	row := serviceStatusRow(t, stdout, "web")
+	if row.Port != allocatedPort || row.Status != "bound" {
+		t.Fatalf("expected bound row for allocated port %d, got %#v in:\n%s", allocatedPort, row, stdout)
+	}
+	servicesIndex := strings.Index(stdout, "Services:\n")
+	composeIndex := strings.Index(stdout, "docker compose")
+	if servicesIndex == -1 || composeIndex == -1 || servicesIndex > composeIndex {
+		t.Fatalf("expected service rows before compose status command, got:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "-p demoapp_feature-test-lane") || !strings.Contains(stdout, " ps") {
 		t.Fatalf("expected compose status command, got:\n%s", stdout)
+	}
+}
+
+func TestStatusPrintsComposeStatusForContainerizedAdapter(t *testing.T) {
+	repo := initComposeOnlyRepo(t)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"status",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--dry-run",
+	})
+	if code != 0 {
+		t.Fatalf("expected status exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if strings.Contains(stdout, "Services:\n") {
+		t.Fatalf("did not expect service rows for compose-only adapter without ports, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "docker compose") || !strings.Contains(stdout, " ps") {
+		t.Fatalf("expected compose ps command, got:\n%s", stdout)
+	}
+}
+
+func TestStatusPrintsHybridPortRowsBeforeComposeStatus(t *testing.T) {
+	repo := initExampleRepo(t, filepath.Join("examples", "hybrid-web"))
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	webPort := preparedPort(t, repo, "web")
+	redisPort := preparedPort(t, repo, "redis")
+	code, stdout, stderr = runCLI(t, []string{
+		"status",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--dry-run",
+	})
+	if code != 0 {
+		t.Fatalf("expected status exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	webRow := serviceStatusRow(t, stdout, "web")
+	redisRow := serviceStatusRow(t, stdout, "redis")
+	if webRow.Port != webPort || webRow.Status != "free" {
+		t.Fatalf("expected free web row for port %d, got %#v in:\n%s", webPort, webRow, stdout)
+	}
+	if redisRow.Port != redisPort || redisRow.Status != "free" {
+		t.Fatalf("expected free redis row for port %d, got %#v in:\n%s", redisPort, redisRow, stdout)
+	}
+
+	webIndex := strings.Index(stdout, "web")
+	redisIndex := strings.Index(stdout, "redis")
+	composeIndex := strings.Index(stdout, "docker compose")
+	if webIndex == -1 || redisIndex == -1 || composeIndex == -1 || webIndex > redisIndex || redisIndex > composeIndex {
+		t.Fatalf("expected adapter-order service rows before compose status command, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "-p hybridweb_feature-example-lane") || !strings.Contains(stdout, " ps") {
+		t.Fatalf("expected hybrid compose status command, got:\n%s", stdout)
 	}
 }
 
@@ -1170,6 +1277,69 @@ func copyDir(source, destination string) error {
 		}
 		return os.WriteFile(target, payload, 0o644)
 	})
+}
+
+type statusRow struct {
+	Service string
+	Port    int
+	Status  string
+}
+
+func serviceStatusRow(t *testing.T, stdout, service string) statusRow {
+	t.Helper()
+
+	for _, line := range strings.Split(stdout, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 4 || fields[0] != service || fields[1] != "port" {
+			continue
+		}
+
+		port, err := strconv.Atoi(fields[2])
+		if err != nil {
+			t.Fatalf("parse status port from line %q: %v", line, err)
+		}
+
+		return statusRow{
+			Service: fields[0],
+			Port:    port,
+			Status:  fields[3],
+		}
+	}
+
+	t.Fatalf("missing status row for service %q in:\n%s", service, stdout)
+	return statusRow{}
+}
+
+func preparedPort(t *testing.T, repo, service string) int {
+	t.Helper()
+
+	payload, err := os.ReadFile(filepath.Join(repo, ".devlane", "manifest.json"))
+	if err != nil {
+		t.Fatalf("read prepared manifest: %v", err)
+	}
+
+	var prepared struct {
+		Ports map[string]struct {
+			Port      int  `json:"port"`
+			Allocated bool `json:"allocated"`
+		} `json:"ports"`
+	}
+	if err := json.Unmarshal(payload, &prepared); err != nil {
+		t.Fatalf("decode prepared manifest: %v\n%s", err, payload)
+	}
+
+	portState, ok := prepared.Ports[service]
+	if !ok {
+		t.Fatalf("prepared manifest is missing service %q: %s", service, payload)
+	}
+	if !portState.Allocated {
+		t.Fatalf("prepared manifest service %q is not allocated: %#v", service, portState)
+	}
+	if portState.Port <= 0 {
+		t.Fatalf("prepared manifest service %q has invalid port: %#v", service, portState)
+	}
+
+	return portState.Port
 }
 
 func removePortsBlock(t *testing.T, configPath string) {
