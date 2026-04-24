@@ -138,7 +138,7 @@ func TestStablePrepareFailsWhenFixtureIsUnavailableAfterSameCheckoutDevPrepare(t
 		t.Fatalf("prepare dev: %v", err)
 	}
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	listener, err := net.Listen("tcp4", "0.0.0.0:3000")
 	if err != nil {
 		t.Fatalf("listen on stable fixture: %v", err)
 	}

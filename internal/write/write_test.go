@@ -191,6 +191,9 @@ func TestPrepareRejectsMissingSymlinkTargetsBeforePromotingWrites(t *testing.T) 
 	if err := os.RemoveAll(*laneManifest.Paths.ComposeEnv); err != nil {
 		t.Fatalf("remove compose env path: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Dir(*laneManifest.Paths.ComposeEnv), 0o755); err != nil {
+		t.Fatalf("mkdir compose env dir: %v", err)
+	}
 	if err := os.Symlink(composeTarget, *laneManifest.Paths.ComposeEnv); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}

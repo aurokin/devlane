@@ -47,7 +47,7 @@ The scaffold is intentionally small but already includes part of the host-catalo
 - builds lane-aware `docker compose` commands for containerized adapters; prints (never runs) bare-metal commands from `runtime.run.commands`
 - exposes `init`, `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
 
-The host catalog itself lives under the OS user config directory: `os.UserConfigDir()/devlane`. In practice that is typically `~/.config/devlane` on Linux and `~/Library/Application Support/devlane` on macOS.
+The host catalog itself lives under the OS user config directory: `os.UserConfigDir()/devlane`, with an explicit `XDG_CONFIG_HOME` taking precedence when set. In practice that is typically `~/.config/devlane` on Linux and `~/Library/Application Support/devlane` on macOS.
 
 ## What is not implemented yet
 
