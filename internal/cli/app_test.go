@@ -861,6 +861,37 @@ func TestInitAllSkipsNestedGitRepos(t *testing.T) {
 	}
 }
 
+func TestInitListSkipsNestedGitRepos(t *testing.T) {
+	repo := t.TempDir()
+	mustWriteFile(t, filepath.Join(repo, "apps", "api", "package.json"), "{}\n")
+
+	nested := filepath.Join(repo, "tools", "nested-repo")
+	mustWriteFile(t, filepath.Join(nested, "package.json"), "{}\n")
+	cmd := exec.Command("git", "init", "-b", "main")
+	cmd.Dir = nested
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, output)
+	}
+
+	code, stdout, stderr := runCLIWithInput(t, []string{
+		"init",
+		"--cwd", repo,
+		"--list",
+	}, "")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "apps/api") {
+		t.Fatalf("expected non-nested app candidate in list output, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "nested-repo") {
+		t.Fatalf("expected nested repo to be skipped in list output, got:\n%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(nested, "devlane.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("expected --list not to write nested repo adapter, stat err=%v", err)
+	}
+}
+
 func TestInitFromCopiesLiteralAdapter(t *testing.T) {
 	repo := t.TempDir()
 	source := filepath.Join(repo, "source.yaml")
