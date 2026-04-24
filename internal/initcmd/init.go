@@ -289,7 +289,16 @@ func isNestedGitRoot(dir string) (bool, error) {
 		return false, nil
 	}
 
-	return filepath.Clean(repoRoot) == filepath.Clean(dir), nil
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		return false, fmt.Errorf("stat scan directory %s: %w", dir, err)
+	}
+	repoInfo, err := os.Stat(repoRoot)
+	if err != nil {
+		return false, fmt.Errorf("stat git repository root %s: %w", repoRoot, err)
+	}
+
+	return os.SameFile(dirInfo, repoInfo), nil
 }
 
 func shouldSkipTree(name string) bool {
