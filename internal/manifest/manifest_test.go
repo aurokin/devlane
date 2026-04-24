@@ -391,6 +391,45 @@ func TestManifestDoesNotDeriveRepoRootFromSymlinkedSubdirectoryCWD(t *testing.T)
 	}
 }
 
+func TestManifestPreservesCanonicalRepoRootFromSymlinkedCheckoutCWD(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "nested"), 0o755); err != nil {
+		t.Fatalf("mkdir nested cwd target: %v", err)
+	}
+	symlinkRoot := filepath.Join(t.TempDir(), "repo-link")
+	if err := os.Symlink(repo, symlinkRoot); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	configPath := filepath.Join(symlinkRoot, "devlane.yaml")
+	adapter, err := config.LoadAdapter(configPath)
+	if err != nil {
+		t.Fatalf("LoadAdapter returned error: %v", err)
+	}
+
+	laneManifest, err := manifest.Build(adapter, manifest.Options{
+		CWD:        filepath.Join(symlinkRoot, "nested"),
+		ConfigPath: configPath,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	canonicalRepo, err := util.CanonicalPath(repo)
+	if err != nil {
+		t.Fatalf("canonicalize repo: %v", err)
+	}
+	if laneManifest.Lane.RepoRoot != canonicalRepo {
+		t.Fatalf("expected canonical repo root %s, got %s", canonicalRepo, laneManifest.Lane.RepoRoot)
+	}
+	if laneManifest.Lane.ConfigPath != filepath.Join(canonicalRepo, "devlane.yaml") {
+		t.Fatalf("expected config path anchored at canonical repo root, got %s", laneManifest.Lane.ConfigPath)
+	}
+	if laneManifest.Paths.Manifest != filepath.Join(canonicalRepo, ".devlane", "manifest.json") {
+		t.Fatalf("expected manifest path anchored at canonical repo root, got %s", laneManifest.Paths.Manifest)
+	}
+}
+
 func TestManifestUsesAdapterRootForDetachedLaneIdentityOutsideGit(t *testing.T) {
 	repo := t.TempDir()
 	appDir := filepath.Join(repo, "apps", "web")

@@ -111,7 +111,7 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 		adapterRoot := filepath.Dir(configPath)
 		repoRoot = adapterRoot
 	} else {
-		repoRoot = alignRootWithPathSpelling(repoRoot, cwd)
+		repoRoot = canonicalPathOrClean(repoRoot)
 		configPath = alignPathWithRootSpelling(repoRoot, configPath)
 	}
 	adapterRoot := filepath.Dir(configPath)
@@ -167,12 +167,12 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 	}, nil
 }
 
-func alignRootWithPathSpelling(root, path string) string {
-	aligned, ok := alignPathWithEquivalentRoot(filepath.Clean(root), filepath.Clean(path))
-	if !ok {
-		return filepath.Clean(root)
+func canonicalPathOrClean(path string) string {
+	canonical, err := util.CanonicalPath(path)
+	if err != nil {
+		return filepath.Clean(path)
 	}
-	return aligned
+	return canonical
 }
 
 func alignPathWithRootSpelling(root, path string) string {
@@ -192,34 +192,6 @@ func alignPathWithRootSpelling(root, path string) string {
 		return filepath.Clean(root)
 	}
 	return filepath.Clean(filepath.Join(root, relative))
-}
-
-func alignPathWithEquivalentRoot(root, path string) (string, bool) {
-	canonicalRoot, err := util.CanonicalPath(root)
-	if err != nil {
-		return "", false
-	}
-	canonicalPath, err := util.CanonicalPath(path)
-	if err != nil {
-		return "", false
-	}
-	relative, err := filepath.Rel(canonicalRoot, canonicalPath)
-	if err != nil || isRelativeEscape(relative) {
-		return "", false
-	}
-	if relative == "." {
-		return filepath.Clean(path), true
-	}
-
-	aligned := filepath.Clean(path)
-	for range strings.Split(relative, string(filepath.Separator)) {
-		aligned = filepath.Dir(aligned)
-	}
-	alignedCanonical, err := util.CanonicalPath(aligned)
-	if err != nil || alignedCanonical != canonicalRoot {
-		return "", false
-	}
-	return aligned, true
 }
 
 func isRelativeEscape(relative string) bool {
