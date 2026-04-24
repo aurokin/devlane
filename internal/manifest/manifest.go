@@ -3,7 +3,6 @@ package manifest
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/auro/devlane/internal/config"
 	"github.com/auro/devlane/internal/gitutil"
@@ -112,7 +111,6 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 		repoRoot = adapterRoot
 	} else {
 		repoRoot = canonicalPathOrClean(repoRoot)
-		configPath = alignPathWithRootSpelling(repoRoot, configPath)
 	}
 	adapterRoot := filepath.Dir(configPath)
 	branch := gitutil.CurrentBranch(cwd)
@@ -173,29 +171,6 @@ func canonicalPathOrClean(path string) string {
 		return filepath.Clean(path)
 	}
 	return canonical
-}
-
-func alignPathWithRootSpelling(root, path string) string {
-	canonicalRoot, err := util.CanonicalPath(root)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	canonicalPath, err := util.CanonicalPath(path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	relative, err := filepath.Rel(canonicalRoot, canonicalPath)
-	if err != nil || isRelativeEscape(relative) {
-		return filepath.Clean(path)
-	}
-	if relative == "." {
-		return filepath.Clean(root)
-	}
-	return filepath.Clean(filepath.Join(root, relative))
-}
-
-func isRelativeEscape(relative string) bool {
-	return relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func Validate(adapter *config.AdapterConfig, options Options) error {

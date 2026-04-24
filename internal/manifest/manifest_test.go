@@ -386,7 +386,7 @@ func TestManifestDoesNotDeriveRepoRootFromSymlinkedSubdirectoryCWD(t *testing.T)
 	if laneManifest.Lane.RepoRoot != canonicalRepo {
 		t.Fatalf("expected git repo root %s, got %s", canonicalRepo, laneManifest.Lane.RepoRoot)
 	}
-	if laneManifest.Paths.Manifest != filepath.Join(canonicalRepo, ".devlane", "manifest.json") {
+	if !samePath(t, laneManifest.Paths.Manifest, filepath.Join(canonicalRepo, ".devlane", "manifest.json")) {
 		t.Fatalf("expected manifest path anchored at repo root, got %s", laneManifest.Paths.Manifest)
 	}
 }
@@ -422,11 +422,61 @@ func TestManifestPreservesCanonicalRepoRootFromSymlinkedCheckoutCWD(t *testing.T
 	if laneManifest.Lane.RepoRoot != canonicalRepo {
 		t.Fatalf("expected canonical repo root %s, got %s", canonicalRepo, laneManifest.Lane.RepoRoot)
 	}
-	if laneManifest.Lane.ConfigPath != filepath.Join(canonicalRepo, "devlane.yaml") {
-		t.Fatalf("expected config path anchored at canonical repo root, got %s", laneManifest.Lane.ConfigPath)
+	if laneManifest.Lane.ConfigPath != configPath {
+		t.Fatalf("expected config path to preserve selected symlink spelling, got %s", laneManifest.Lane.ConfigPath)
 	}
-	if laneManifest.Paths.Manifest != filepath.Join(canonicalRepo, ".devlane", "manifest.json") {
+	if laneManifest.Paths.Manifest != filepath.Join(symlinkRoot, ".devlane", "manifest.json") {
 		t.Fatalf("expected manifest path anchored at canonical repo root, got %s", laneManifest.Paths.Manifest)
+	}
+}
+
+func TestManifestPreservesSymlinkedConfigPathAsAdapterRoot(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	sharedRoot := t.TempDir()
+	sharedConfigPath := filepath.Join(sharedRoot, "shared-devlane.yaml")
+	payload, err := os.ReadFile(filepath.Join(repo, "devlane.yaml"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if err := os.WriteFile(sharedConfigPath, payload, 0o644); err != nil {
+		t.Fatalf("write shared config: %v", err)
+	}
+	configPath := filepath.Join(repo, "devlane.yaml")
+	if err := os.Remove(configPath); err != nil {
+		t.Fatalf("remove repo config: %v", err)
+	}
+	if err := os.Symlink(sharedConfigPath, configPath); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	adapter, err := config.LoadAdapter(configPath)
+	if err != nil {
+		t.Fatalf("LoadAdapter returned error: %v", err)
+	}
+
+	laneManifest, err := manifest.Build(adapter, manifest.Options{
+		CWD:        repo,
+		ConfigPath: configPath,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	canonicalRepo, err := util.CanonicalPath(repo)
+	if err != nil {
+		t.Fatalf("canonicalize repo: %v", err)
+	}
+	if laneManifest.Lane.RepoRoot != canonicalRepo {
+		t.Fatalf("expected canonical repo root %s, got %s", canonicalRepo, laneManifest.Lane.RepoRoot)
+	}
+	if laneManifest.Lane.ConfigPath != configPath {
+		t.Fatalf("expected config path to preserve symlink location, got %s", laneManifest.Lane.ConfigPath)
+	}
+	if laneManifest.Paths.Manifest != filepath.Join(repo, ".devlane", "manifest.json") {
+		t.Fatalf("expected manifest path anchored at symlink config directory, got %s", laneManifest.Paths.Manifest)
+	}
+	if laneManifest.Compose.Files[0] != filepath.Join(repo, "compose.yaml") {
+		t.Fatalf("expected compose file anchored at symlink config directory, got %s", laneManifest.Compose.Files[0])
 	}
 }
 
@@ -561,4 +611,18 @@ outputs:
 	if !strings.Contains(err.Error(), "repo root") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func samePath(t *testing.T, left, right string) bool {
+	t.Helper()
+
+	leftCanonical, err := util.CanonicalPath(left)
+	if err != nil {
+		t.Fatalf("canonicalize %s: %v", left, err)
+	}
+	rightCanonical, err := util.CanonicalPath(right)
+	if err != nil {
+		t.Fatalf("canonicalize %s: %v", right, err)
+	}
+	return leftCanonical == rightCanonical
 }
