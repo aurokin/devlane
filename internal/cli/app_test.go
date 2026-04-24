@@ -43,6 +43,46 @@ func TestInspectFindsNearestAdapterFromCWD(t *testing.T) {
 	}
 }
 
+func TestInspectAndPrepareUseSamePathAnchors(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	removePortsBlock(t, filepath.Join(repo, "devlane.yaml"))
+	cwd := filepath.Join(repo, "nested", "child")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatalf("mkdir nested cwd: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"inspect", "--cwd", cwd, "--json"})
+	if code != 0 {
+		t.Fatalf("expected inspect exit code 0, got %d\nstderr:\n%s", code, stderr)
+	}
+	var inspected map[string]any
+	if err := json.Unmarshal([]byte(stdout), &inspected); err != nil {
+		t.Fatalf("decode inspect JSON: %v\n%s", err, stdout)
+	}
+
+	code, _, stderr = runCLI(t, []string{"prepare", "--cwd", cwd})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstderr:\n%s", code, stderr)
+	}
+	payload, err := os.ReadFile(filepath.Join(repo, ".devlane", "manifest.json"))
+	if err != nil {
+		t.Fatalf("read prepared manifest: %v", err)
+	}
+	var prepared map[string]any
+	if err := json.Unmarshal(payload, &prepared); err != nil {
+		t.Fatalf("decode prepared manifest: %v\n%s", err, payload)
+	}
+
+	if inspected["lane"].(map[string]any)["repoRoot"] != prepared["lane"].(map[string]any)["repoRoot"] {
+		t.Fatalf("inspect and prepare disagreed on repoRoot:\ninspect=%v\nprepare=%v", inspected["lane"], prepared["lane"])
+	}
+	inspectedGenerated := inspected["outputs"].(map[string]any)["generated"].([]any)[0].(map[string]any)["destination"]
+	preparedGenerated := prepared["outputs"].(map[string]any)["generated"].([]any)[0].(map[string]any)["destination"]
+	if inspectedGenerated != preparedGenerated {
+		t.Fatalf("inspect and prepare disagreed on generated destination: %v vs %v", inspectedGenerated, preparedGenerated)
+	}
+}
+
 func TestUpFailsWhenPortsAreUnallocatedAndDoesNotImplicitlyRunPrepare(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 	manifestPath := filepath.Join(repo, ".devlane", "manifest.json")

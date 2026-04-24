@@ -68,3 +68,23 @@ func TestResolveAdapterPathAllowsInternalSymlinkTargets(t *testing.T) {
 		t.Fatalf("unexpected resolved path: %s", resolved)
 	}
 }
+
+func TestIsWithinResolvedAllowsEquivalentSymlinkPrefix(t *testing.T) {
+	root := t.TempDir()
+	realRoot := filepath.Join(root, "real")
+	linkRoot := filepath.Join(root, "link")
+	if err := os.MkdirAll(filepath.Join(realRoot, ".devlane"), 0o755); err != nil {
+		t.Fatalf("mkdir real root: %v", err)
+	}
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	target := filepath.Join(linkRoot, ".devlane", "manifest.json")
+	if !IsWithinResolved(realRoot, target) {
+		t.Fatalf("expected %s to resolve within %s", target, realRoot)
+	}
+	if !IsWithinResolved(linkRoot, filepath.Join(realRoot, ".devlane", "manifest.json")) {
+		t.Fatalf("expected real path to resolve within symlinked root")
+	}
+}

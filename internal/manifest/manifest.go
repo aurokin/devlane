@@ -98,16 +98,21 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 	if err != nil {
 		return Inputs{}, fmt.Errorf("resolve cwd: %w", err)
 	}
+	cwd = filepath.Clean(cwd)
 
 	configPath, err := filepath.Abs(options.ConfigPath)
 	if err != nil {
 		return Inputs{}, fmt.Errorf("resolve config path: %w", err)
 	}
-	adapterRoot := filepath.Dir(filepath.Clean(configPath))
+	configPath = filepath.Clean(configPath)
 	repoRoot, ok := gitutil.FindRepoRootOK(cwd)
 	if !ok {
+		adapterRoot := filepath.Dir(configPath)
 		repoRoot = adapterRoot
+	} else {
+		repoRoot = canonicalPathOrClean(repoRoot)
 	}
+	adapterRoot := filepath.Dir(configPath)
 	branch := gitutil.CurrentBranch(cwd)
 
 	isStable, mode, err := deriveMode(adapter, options.Mode, branch)
@@ -158,6 +163,14 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 		Profiles:     profiles,
 		Generated:    generated,
 	}, nil
+}
+
+func canonicalPathOrClean(path string) string {
+	canonical, err := util.CanonicalPath(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return canonical
 }
 
 func Validate(adapter *config.AdapterConfig, options Options) error {

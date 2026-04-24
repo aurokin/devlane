@@ -37,11 +37,15 @@ func ResolvePath(base, raw string) string {
 
 func ResolveAdapterPath(adapterRoot, repoRoot, raw string) (string, error) {
 	resolved := ResolvePath(adapterRoot, raw)
-	if !isWithinAfterSymlinkResolution(repoRoot, resolved) {
+	if !IsWithinResolved(repoRoot, resolved) {
 		return "", fmt.Errorf("path must stay within repo root: %s", resolved)
 	}
 
 	return resolved, nil
+}
+
+func CanonicalPath(path string) (string, error) {
+	return resolvePathWithSymlinks(path)
 }
 
 func EnsureParent(path string) error {
@@ -102,7 +106,7 @@ func IsWithin(base, target string) bool {
 	return relative == "." || (!strings.HasPrefix(relative, "..") && !slices.Contains([]string{"..", ""}, relative))
 }
 
-func isWithinAfterSymlinkResolution(base, target string) bool {
+func IsWithinResolved(base, target string) bool {
 	baseResolved, err := resolvePathWithSymlinks(base)
 	if err != nil {
 		return false

@@ -12,6 +12,7 @@ import (
 	"github.com/auro/devlane/internal/config"
 	"github.com/auro/devlane/internal/manifest"
 	"github.com/auro/devlane/internal/testutil"
+	"github.com/auro/devlane/internal/util"
 	"github.com/auro/devlane/internal/write"
 )
 
@@ -524,7 +525,16 @@ func assertSymlink(t *testing.T, path, wantTarget string) {
 func generatedSidecarPathForTest(t *testing.T, repoRoot, destinationPath string) string {
 	t.Helper()
 
-	relative, err := filepath.Rel(repoRoot, destinationPath)
+	canonicalRepoRoot, err := util.CanonicalPath(repoRoot)
+	if err != nil {
+		t.Fatalf("canonicalize repo root: %v", err)
+	}
+	canonicalDestinationPath, err := util.CanonicalPath(destinationPath)
+	if err != nil {
+		t.Fatalf("canonicalize destination path: %v", err)
+	}
+
+	relative, err := filepath.Rel(canonicalRepoRoot, canonicalDestinationPath)
 	if err != nil {
 		t.Fatalf("derive relative destination: %v", err)
 	}
