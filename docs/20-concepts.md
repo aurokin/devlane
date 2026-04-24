@@ -99,7 +99,7 @@ Agents should prefer the manifest over scraping ad hoc files.
 
 ## Host catalog
 
-The **host catalog** at `os.UserConfigDir()/devlane/catalog.json` is the tool-owned record of which `(app, repoPath, service)` owns which host port on this machine. In practice that is typically `~/.config/devlane/catalog.json` on Linux and `~/Library/Application Support/devlane/catalog.json` on macOS.
+The **host catalog** at `os.UserConfigDir()/devlane/catalog.json` is the tool-owned record of which `(app, repoPath, service)` owns which host port on this machine. An explicit `XDG_CONFIG_HOME` takes precedence when set. In practice that is typically `~/.config/devlane/catalog.json` on Linux and `~/Library/Application Support/devlane/catalog.json` on macOS.
 
 It is the manifest's peer at host scope: the manifest is the contract inside one lane, the catalog is the contract across lanes and repos.
 

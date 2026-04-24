@@ -12,14 +12,14 @@ The catalog is that shared view.
 
 ## Files
 
-Two files live under `os.UserConfigDir()/devlane/`:
+Two files live under `os.UserConfigDir()/devlane/`, with an explicit `XDG_CONFIG_HOME` taking precedence when set:
 
 - `config.yaml` — user-editable configuration (port range, reserved ports)
 - `catalog.json` — tool-owned state (allocations)
 
 Keep them separate. The user owns the config. The tool owns the catalog.
 
-Examples in this doc use `~/.config/devlane` as Linux-style shorthand. On macOS the current implementation uses `~/Library/Application Support/devlane`.
+Examples in this doc use `~/.config/devlane` as Linux-style shorthand. On macOS the default location is `~/Library/Application Support/devlane` unless `XDG_CONFIG_HOME` is explicitly set.
 
 ## `config.yaml`
 

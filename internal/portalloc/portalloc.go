@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -98,7 +99,7 @@ func HasAllocation(lane Lane) (bool, error) {
 	}
 
 	for _, row := range cat.Allocations {
-		if row.App == lane.App && row.RepoPath == lane.RepoPath {
+		if row.App == lane.App && sameRepoPath(row.RepoPath, lane.RepoPath) {
 			return true, nil
 		}
 	}
@@ -215,8 +216,7 @@ func resolve(adapter *config.AdapterConfig, lane Lane, cfg hostConfig, cat *cata
 	byService := make(map[string]*allocation, len(adapter.Ports))
 	for i := range cat.Allocations {
 		row := &cat.Allocations[i]
-		key := allocationKey(row.App, row.RepoPath, row.Service)
-		if key == allocationKey(lane.App, lane.RepoPath, row.Service) {
+		if row.App == lane.App && sameRepoPath(row.RepoPath, lane.RepoPath) {
 			byService[row.Service] = row
 		}
 		held[row.Port] = *row
@@ -403,10 +403,6 @@ func healthURL(port int, path string) *string {
 	return &value
 }
 
-func allocationKey(app, repoPath, service string) string {
-	return app + "\x00" + repoPath + "\x00" + service
-}
-
 func declaredServices(adapter *config.AdapterConfig) map[string]struct{} {
 	declared := make(map[string]struct{}, len(adapter.Ports))
 	for _, portConfig := range adapter.Ports {
@@ -422,7 +418,7 @@ func pruneUndeclaredAllocations(cat *catalog, lane Lane, declared map[string]str
 
 	kept := cat.Allocations[:0]
 	for _, row := range cat.Allocations {
-		if row.App == lane.App && row.RepoPath == lane.RepoPath {
+		if row.App == lane.App && sameRepoPath(row.RepoPath, lane.RepoPath) {
 			if _, ok := declared[row.Service]; !ok {
 				continue
 			}
@@ -430,6 +426,20 @@ func pruneUndeclaredAllocations(cat *catalog, lane Lane, declared map[string]str
 		kept = append(kept, row)
 	}
 	cat.Allocations = kept
+}
+
+func sameRepoPath(left, right string) bool {
+	if filepath.Clean(left) == filepath.Clean(right) {
+		return true
+	}
+
+	leftResolved, leftErr := filepath.EvalSymlinks(left)
+	rightResolved, rightErr := filepath.EvalSymlinks(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+
+	return filepath.Clean(leftResolved) == filepath.Clean(rightResolved)
 }
 
 func loadHostConfig() (hostConfig, error) {
@@ -575,11 +585,38 @@ func defaultLegacyBranch(row *allocation) string {
 }
 
 func configDir() (string, error) {
+	if xdgConfigHome := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdgConfigHome != "" {
+		if filepath.IsAbs(xdgConfigHome) {
+			return filepath.Join(xdgConfigHome, "devlane"), nil
+		}
+		root, err := defaultUserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(root, "devlane"), nil
+	}
+
 	root, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve user config dir: %w", err)
 	}
 	return filepath.Join(root, "devlane"), nil
+}
+
+func defaultUserConfigDir() (string, error) {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		root, err := os.UserConfigDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user config dir: %w", err)
+		}
+		return root, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user home dir: %w", err)
+	}
+	return filepath.Join(home, ".config"), nil
 }
 
 func configPath() (string, error) {

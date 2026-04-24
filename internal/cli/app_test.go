@@ -523,7 +523,7 @@ func TestPrepareAllocatesDistinctPortsAcrossLanes(t *testing.T) {
 func TestPrepareSkipsBoundDefaultPortForDevLane(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	listener, err := net.Listen("tcp4", "0.0.0.0:3000")
 	if err != nil {
 		t.Fatalf("listen on 3000: %v", err)
 	}
@@ -550,7 +550,7 @@ func TestPrepareSkipsBoundDefaultPortForDevLane(t *testing.T) {
 func TestPrepareMinimalWebRendersAllocatedAppPort(t *testing.T) {
 	repo := initExampleRepo(t, filepath.Join("examples", "minimal-web"))
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	listener, err := net.Listen("tcp4", "0.0.0.0:3000")
 	if err != nil {
 		t.Fatalf("listen on 3000: %v", err)
 	}
@@ -607,7 +607,7 @@ func TestPrepareRejectsBoundStableFixture(t *testing.T) {
 	sharedConfig := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", sharedConfig)
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	listener, err := net.Listen("tcp4", "0.0.0.0:3000")
 	if err != nil {
 		t.Fatalf("listen on 3000: %v", err)
 	}
@@ -631,7 +631,7 @@ func TestPrepareRejectsBoundStableFixture(t *testing.T) {
 func TestDoctorDoesNotFailEarlyOnBoundStableFixture(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	listener, err := net.Listen("tcp4", "0.0.0.0:3000")
 	if err != nil {
 		t.Fatalf("listen on 3000: %v", err)
 	}
@@ -752,7 +752,7 @@ func TestStatusPrintsPortRowsBeforeComposeStatus(t *testing.T) {
 		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:3000")
+	listener, err := net.Listen("tcp4", "0.0.0.0:3000")
 	if err != nil {
 		t.Fatalf("listen on allocated port: %v", err)
 	}
