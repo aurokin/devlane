@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/auro/devlane/internal/config"
 	"github.com/auro/devlane/internal/gitutil"
@@ -98,16 +99,22 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 	if err != nil {
 		return Inputs{}, fmt.Errorf("resolve cwd: %w", err)
 	}
+	cwd = filepath.Clean(cwd)
 
 	configPath, err := filepath.Abs(options.ConfigPath)
 	if err != nil {
 		return Inputs{}, fmt.Errorf("resolve config path: %w", err)
 	}
-	adapterRoot := filepath.Dir(filepath.Clean(configPath))
+	configPath = filepath.Clean(configPath)
 	repoRoot, ok := gitutil.FindRepoRootOK(cwd)
 	if !ok {
+		adapterRoot := filepath.Dir(configPath)
 		repoRoot = adapterRoot
+	} else {
+		repoRoot = alignRootWithPathSpelling(repoRoot, cwd)
+		configPath = alignPathWithRootSpelling(repoRoot, configPath)
 	}
+	adapterRoot := filepath.Dir(configPath)
 	branch := gitutil.CurrentBranch(cwd)
 
 	isStable, mode, err := deriveMode(adapter, options.Mode, branch)
@@ -158,6 +165,61 @@ func BuildInputs(adapter *config.AdapterConfig, options Options) (Inputs, error)
 		Profiles:     profiles,
 		Generated:    generated,
 	}, nil
+}
+
+func alignRootWithPathSpelling(root, path string) string {
+	aligned, ok := alignPathWithEquivalentRoot(filepath.Clean(root), filepath.Clean(path))
+	if !ok {
+		return filepath.Clean(root)
+	}
+	return aligned
+}
+
+func alignPathWithRootSpelling(root, path string) string {
+	canonicalRoot, err := util.CanonicalPath(root)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	canonicalPath, err := util.CanonicalPath(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	relative, err := filepath.Rel(canonicalRoot, canonicalPath)
+	if err != nil || isRelativeEscape(relative) {
+		return filepath.Clean(path)
+	}
+	if relative == "." {
+		return filepath.Clean(root)
+	}
+	return filepath.Clean(filepath.Join(root, relative))
+}
+
+func alignPathWithEquivalentRoot(root, path string) (string, bool) {
+	canonicalRoot, err := util.CanonicalPath(root)
+	if err != nil {
+		return "", false
+	}
+	canonicalPath, err := util.CanonicalPath(path)
+	if err != nil {
+		return "", false
+	}
+	relative, err := filepath.Rel(canonicalRoot, canonicalPath)
+	if err != nil || isRelativeEscape(relative) {
+		return "", false
+	}
+	if relative == "." {
+		return filepath.Clean(path), true
+	}
+
+	aligned := filepath.Clean(path)
+	for range strings.Split(relative, string(filepath.Separator)) {
+		aligned = filepath.Dir(aligned)
+	}
+	return aligned, true
+}
+
+func isRelativeEscape(relative string) bool {
+	return relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func Validate(adapter *config.AdapterConfig, options Options) error {

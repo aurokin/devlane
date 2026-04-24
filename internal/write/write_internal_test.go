@@ -239,6 +239,64 @@ func TestPrepareWithRollbackRejectsMissingSymlinkTargetsBeforePromotion(t *testi
 	}
 }
 
+func TestPrepareAcceptsGeneratedOutputsWithEquivalentRootSpellings(t *testing.T) {
+	repo, adapter, laneManifest := buildDemoManifestInternal(t)
+
+	linkRoot := filepath.Join(filepath.Dir(repo), "linked-repo")
+	if err := os.Symlink(repo, linkRoot); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	composeEnvPath := filepath.Join(linkRoot, ".devlane", "compose.env")
+	laneManifest.Lane.ConfigPath = filepath.Join(linkRoot, "devlane.yaml")
+	laneManifest.Paths.Manifest = filepath.Join(linkRoot, ".devlane", "manifest.json")
+	laneManifest.Paths.ComposeEnv = &composeEnvPath
+	laneManifest.Compose.Files = []string{
+		filepath.Join(linkRoot, "compose.yaml"),
+		filepath.Join(linkRoot, "compose.devlane.yaml"),
+	}
+	laneManifest.Outputs.Generated = []manifest.GeneratedOutput{
+		{
+			Template:    filepath.Join(linkRoot, "templates", "app.env.tmpl"),
+			Destination: filepath.Join(linkRoot, ".devlane", "generated", "app.env"),
+		},
+	}
+
+	if _, err := Prepare(laneManifest, adapter); err != nil {
+		t.Fatalf("Prepare returned error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".devlane", "generated", "app.env")); err != nil {
+		t.Fatalf("expected generated output through equivalent path spelling: %v", err)
+	}
+}
+
+func TestPrepareRejectsGeneratedSymlinkTargetOutsideRepo(t *testing.T) {
+	repo, adapter, laneManifest := buildDemoManifestInternal(t)
+
+	renderedPath := filepath.Join(repo, ".devlane", "generated", "app.env")
+	outsideTarget := filepath.Join(t.TempDir(), "app.env")
+	if err := os.WriteFile(outsideTarget, []byte("OUTSIDE=1\n"), 0o644); err != nil {
+		t.Fatalf("write outside target: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(renderedPath), 0o755); err != nil {
+		t.Fatalf("mkdir rendered dir: %v", err)
+	}
+	if err := os.Symlink(outsideTarget, renderedPath); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	_, rollback, err := PrepareWithRollback(laneManifest, adapter)
+	if err == nil {
+		t.Fatal("expected PrepareWithRollback to fail")
+	}
+	if rollback != nil {
+		t.Fatal("expected rollback callback to be nil on preflight failure")
+	}
+	if !strings.Contains(err.Error(), "repo root") {
+		t.Fatalf("expected repo root containment error, got %v", err)
+	}
+}
+
 func assertSymlinkInternal(t *testing.T, path, wantTarget string) {
 	t.Helper()
 

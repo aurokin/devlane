@@ -49,12 +49,13 @@ type prepareOperation struct {
 }
 
 type plannedWrite struct {
-	label       string
-	path        string
-	targetPath  string
-	payload     []byte
-	mode        os.FileMode
-	verifyForUp bool
+	label           string
+	path            string
+	targetPath      string
+	containmentRoot string
+	payload         []byte
+	mode            os.FileMode
+	verifyForUp     bool
 }
 
 type stagedWrite struct {
@@ -363,10 +364,11 @@ func planWrites(laneManifest manifest.Manifest, adapter *config.AdapterConfig, c
 
 	writes := []plannedWrite{
 		{
-			label:   "manifest",
-			path:    laneManifest.Paths.Manifest,
-			payload: append(payload, '\n'),
-			mode:    0o644,
+			label:           "manifest",
+			path:            laneManifest.Paths.Manifest,
+			containmentRoot: laneManifest.Lane.RepoRoot,
+			payload:         append(payload, '\n'),
+			mode:            0o644,
 		},
 	}
 
@@ -376,11 +378,12 @@ func planWrites(laneManifest manifest.Manifest, adapter *config.AdapterConfig, c
 			return nil, nil, err
 		}
 		writes = append(writes, plannedWrite{
-			label:       "compose env",
-			path:        *laneManifest.Paths.ComposeEnv,
-			payload:     envPayload,
-			mode:        0o644,
-			verifyForUp: true,
+			label:           "compose env",
+			path:            *laneManifest.Paths.ComposeEnv,
+			containmentRoot: laneManifest.Lane.RepoRoot,
+			payload:         envPayload,
+			mode:            0o644,
+			verifyForUp:     true,
 		})
 	}
 
@@ -404,6 +407,9 @@ func prepareWriteTargets(writes []plannedWrite) ([]plannedWrite, []fileSnapshot,
 
 		resolvedWrite := write
 		resolvedWrite.targetPath = target.path
+		if write.containmentRoot != "" && !util.IsWithinResolved(write.containmentRoot, target.path) {
+			return nil, nil, fmt.Errorf("%s target must stay within repo root: %s", write.label, target.path)
+		}
 		if target.existed {
 			resolvedWrite.mode = target.mode
 			payload, err := os.ReadFile(target.path)
@@ -681,11 +687,11 @@ func generatedWrites(laneManifest manifest.Manifest, context map[string]any) ([]
 	writes := make([]plannedWrite, 0, len(outputs)*2)
 	messages := make([]string, 0, len(outputs))
 	for _, output := range outputs {
-		if !util.IsWithin(laneManifest.Lane.RepoRoot, output.Destination) {
+		if !util.IsWithinResolved(laneManifest.Lane.RepoRoot, output.Destination) {
 			return nil, nil, fmt.Errorf("generated destination must stay within repo root: %s", output.Destination)
 		}
 
-		if !util.IsWithin(laneManifest.Lane.RepoRoot, output.Template) {
+		if !util.IsWithinResolved(laneManifest.Lane.RepoRoot, output.Template) {
 			return nil, nil, fmt.Errorf("generated template must stay within repo root: %s", output.Template)
 		}
 
@@ -708,17 +714,19 @@ func generatedWrites(laneManifest manifest.Manifest, context map[string]any) ([]
 		payload := []byte(rendered)
 		writes = append(writes,
 			plannedWrite{
-				label:       fmt.Sprintf("generated output %s", output.Destination),
-				path:        output.Destination,
-				payload:     payload,
-				mode:        0o644,
-				verifyForUp: true,
+				label:           fmt.Sprintf("generated output %s", output.Destination),
+				path:            output.Destination,
+				containmentRoot: laneManifest.Lane.RepoRoot,
+				payload:         payload,
+				mode:            0o644,
+				verifyForUp:     true,
 			},
 			plannedWrite{
-				label:   "generated sidecar",
-				path:    sidecarPath,
-				payload: []byte(payloadHash(payload) + "\n"),
-				mode:    0o644,
+				label:           "generated sidecar",
+				path:            sidecarPath,
+				containmentRoot: laneManifest.Lane.RepoRoot,
+				payload:         []byte(payloadHash(payload) + "\n"),
+				mode:            0o644,
 			},
 		)
 	}
@@ -727,7 +735,16 @@ func generatedWrites(laneManifest manifest.Manifest, context map[string]any) ([]
 }
 
 func generatedSidecarPath(repoRoot, destinationPath string) (string, error) {
-	relative, err := filepath.Rel(repoRoot, destinationPath)
+	canonicalRepoRoot, err := util.CanonicalPath(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve repo root for generated sidecar path: %w", err)
+	}
+	canonicalDestinationPath, err := util.CanonicalPath(destinationPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve generated destination for sidecar path: %w", err)
+	}
+
+	relative, err := filepath.Rel(canonicalRepoRoot, canonicalDestinationPath)
 	if err != nil {
 		return "", fmt.Errorf("derive generated sidecar path for %s: %w", destinationPath, err)
 	}
