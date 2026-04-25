@@ -904,6 +904,17 @@ func TestStatusPrintsUnallocatedPortRowsForBareMetal(t *testing.T) {
 	if strings.Contains(stdout, "docker compose") {
 		t.Fatalf("did not expect compose status output for bare-metal adapter, got:\n%s", stdout)
 	}
+	assertOrderedSubstrings(t, stdout,
+		"Lane: feature/test-lane (dev)\n",
+		"App: demoapp (cli)\n",
+		"Project: demoapp_feature-test-lane\n",
+		"Public URL: http://feature-test-lane.demoapp.localhost\n",
+		"Ports ready: false\n",
+		"Bare-metal commands: 1 declared\n",
+		"Services:\n",
+		"  web    port ",
+		" unallocated\n",
+	)
 }
 
 func TestStatusPrintsFreePortRowsForPreparedBareMetal(t *testing.T) {
@@ -934,6 +945,17 @@ func TestStatusPrintsFreePortRowsForPreparedBareMetal(t *testing.T) {
 	if strings.Contains(stdout, "docker compose") {
 		t.Fatalf("did not expect compose status output for bare-metal adapter, got:\n%s", stdout)
 	}
+	assertOrderedSubstrings(t, stdout,
+		"Lane: feature/test-lane (dev)\n",
+		"App: demoapp (cli)\n",
+		"Project: demoapp_feature-test-lane\n",
+		"Public URL: http://feature-test-lane.demoapp.localhost\n",
+		"Ports ready: true\n",
+		"Bare-metal commands: 1 declared\n",
+		"Services:\n",
+		"  web    port ",
+		" free\n",
+	)
 }
 
 func TestStatusPrintsBoundPortRowsBeforeComposeStatus(t *testing.T) {
@@ -976,6 +998,18 @@ func TestStatusPrintsBoundPortRowsBeforeComposeStatus(t *testing.T) {
 	if !strings.Contains(stdout, "-p demoapp_feature-test-lane") || !strings.Contains(stdout, " ps") {
 		t.Fatalf("expected compose status command, got:\n%s", stdout)
 	}
+	assertOrderedSubstrings(t, stdout,
+		"Lane: feature/test-lane (dev)\n",
+		"App: demoapp (web)\n",
+		"Project: demoapp_feature-test-lane\n",
+		"Public URL: http://feature-test-lane.demoapp.localhost\n",
+		"Ports ready: true\n",
+		"Services:\n",
+		"  web    port ",
+		" bound\n\n",
+		"docker compose ",
+		" ps\n",
+	)
 }
 
 func TestStatusPrintsComposeStatusForContainerizedAdapter(t *testing.T) {
@@ -996,6 +1030,14 @@ func TestStatusPrintsComposeStatusForContainerizedAdapter(t *testing.T) {
 	if !strings.Contains(stdout, "docker compose") || !strings.Contains(stdout, " ps") {
 		t.Fatalf("expected compose ps command, got:\n%s", stdout)
 	}
+	assertOrderedSubstrings(t, stdout,
+		"Lane: feature/test-lane (dev)\n",
+		"App: demoapp (web)\n",
+		"Project: demoapp_feature-test-lane\n",
+		"Public URL: http://feature-test-lane.demoapp.localhost\n",
+		"docker compose ",
+		" ps\n",
+	)
 }
 
 func TestStatusPrintsHybridPortRowsBeforeComposeStatus(t *testing.T) {
@@ -1044,6 +1086,103 @@ func TestStatusPrintsHybridPortRowsBeforeComposeStatus(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "-p hybridweb_feature-example-lane") || !strings.Contains(stdout, " ps") {
 		t.Fatalf("expected hybrid compose status command, got:\n%s", stdout)
+	}
+	assertOrderedSubstrings(t, stdout,
+		"Lane: feature/example-lane (dev)\n",
+		"App: hybridweb (hybrid)\n",
+		"Project: hybridweb_feature-example-lane\n",
+		"Public URL: -\n",
+		"Ports ready: true\n",
+		"Bare-metal commands: 2 declared\n",
+		"Services:\n",
+		"  web    port ",
+		" free\n",
+		"  redis  port ",
+		" free\n\n",
+		"docker compose ",
+		" ps\n",
+	)
+}
+
+func TestStatusDoesNotWritePreparedStateForUnpreparedHybridAdapter(t *testing.T) {
+	repo := initExampleRepo(t, filepath.Join("examples", "hybrid-web"))
+	catalogPath := filepath.Join(repo, ".xdg", "devlane", "catalog.json")
+
+	code, stdout, stderr := runCLI(t, []string{
+		"status",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--dry-run",
+	})
+	if code != 0 {
+		t.Fatalf("expected status exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	assertOrderedSubstrings(t, stdout,
+		"Ports ready: false\n",
+		"Services:\n",
+		"  web    port ",
+		" unallocated\n",
+		"  redis  port ",
+		" unallocated\n\n",
+		"docker compose ",
+		" ps\n",
+	)
+
+	for _, path := range []string{
+		filepath.Join(repo, ".devlane", "manifest.json"),
+		filepath.Join(repo, ".devlane", "compose.env"),
+		filepath.Join(repo, ".env.local"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected status not to write %s, stat err=%v", path, err)
+		}
+	}
+	assertCatalogAllocations(t, catalogPath, 0)
+}
+
+func TestStatusDoesNotMutatePreparedState(t *testing.T) {
+	repo := initExampleRepo(t, filepath.Join("examples", "hybrid-web"))
+	catalogPath := filepath.Join(repo, ".xdg", "devlane", "catalog.json")
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	before := readFiles(t,
+		filepath.Join(repo, ".devlane", "manifest.json"),
+		filepath.Join(repo, ".devlane", "compose.env"),
+		filepath.Join(repo, ".env.local"),
+		catalogPath,
+	)
+
+	code, stdout, stderr = runCLI(t, []string{
+		"status",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--dry-run",
+	})
+	if code != 0 {
+		t.Fatalf("expected status exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Ports ready: true") {
+		t.Fatalf("expected prepared status output, got:\n%s", stdout)
+	}
+
+	after := readFiles(t,
+		filepath.Join(repo, ".devlane", "manifest.json"),
+		filepath.Join(repo, ".devlane", "compose.env"),
+		filepath.Join(repo, ".env.local"),
+		catalogPath,
+	)
+	for path, beforePayload := range before {
+		if after[path] != beforePayload {
+			t.Fatalf("expected status not to mutate %s\nbefore:\n%s\nafter:\n%s", path, beforePayload, after[path])
+		}
 	}
 }
 
@@ -1504,6 +1643,33 @@ func serviceStatusRow(t *testing.T, stdout, service string) statusRow {
 
 	t.Fatalf("missing status row for service %q in:\n%s", service, stdout)
 	return statusRow{}
+}
+
+func assertOrderedSubstrings(t *testing.T, text string, substrings ...string) {
+	t.Helper()
+
+	offset := 0
+	for _, substring := range substrings {
+		index := strings.Index(text[offset:], substring)
+		if index == -1 {
+			t.Fatalf("expected %q after offset %d in:\n%s", substring, offset, text)
+		}
+		offset += index + len(substring)
+	}
+}
+
+func readFiles(t *testing.T, paths ...string) map[string]string {
+	t.Helper()
+
+	files := make(map[string]string, len(paths))
+	for _, path := range paths {
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		files[path] = string(payload)
+	}
+	return files
 }
 
 func preparedPort(t *testing.T, repo, service string) int {
