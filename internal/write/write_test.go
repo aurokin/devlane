@@ -329,6 +329,9 @@ func TestTemplateContextExposesManifestSections(t *testing.T) {
 		Runtime: config.RuntimeConfig{
 			Env: map[string]any{},
 		},
+		Ports: []config.PortConfig{
+			{Name: "web", Default: 3100},
+		},
 	}
 
 	context, err := write.TemplateContext(laneManifest, adapter)
@@ -363,6 +366,7 @@ func TestTemplateContextExposesManifestSections(t *testing.T) {
 
 func TestTemplateContextSanitizesSlashDelimitedPortEnvKeys(t *testing.T) {
 	_, adapter, laneManifest := buildDemoManifest(t)
+	adapter.Ports[0].Name = "web/api"
 	laneManifest.Ready = true
 	laneManifest.Ports = manifest.Ports{
 		"web/api": {
@@ -387,6 +391,32 @@ func TestTemplateContextSanitizesSlashDelimitedPortEnvKeys(t *testing.T) {
 	}
 	if ports["web/api"] != 3100 {
 		t.Fatalf("unexpected ports[web/api]: %#v", ports["web/api"])
+	}
+}
+
+func TestComputeEnvRejectsPortEnvKeyCollisions(t *testing.T) {
+	_, adapter, laneManifest := buildDemoManifest(t)
+	adapter.Ports = []config.PortConfig{
+		{Name: "api", Default: 3100},
+		{Name: "web/api", Default: 3101},
+	}
+	laneManifest.Ports = manifest.Ports{
+		"api": {
+			Port:      3100,
+			Allocated: true,
+		},
+		"web/api": {
+			Port:      3101,
+			Allocated: true,
+		},
+	}
+
+	_, err := write.ComputeEnv(laneManifest, adapter)
+	if err == nil {
+		t.Fatal("expected port env key collision")
+	}
+	if !strings.Contains(err.Error(), "port env key collision") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

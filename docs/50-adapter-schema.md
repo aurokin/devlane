@@ -152,7 +152,7 @@ New variables are added to both scopes together.
 
 Optional. A list of named port needs.
 
-- `name` — service identity, referenced from the manifest (`ports.<name>`) and env (`DEVLANE_PORT_<NAME>`)
+- `name` — service identity, used as the manifest key (`ports.<name>`) and catalog service key. Simple names such as `web` or `api` are easiest to reference from templates (`{{ports.web}}`). Slash-delimited names such as `web/api` are accepted for service paths; generated env keys are sanitized from the final path segment (`web/api` -> `DEVLANE_PORT_API`). Names that collide after env-key sanitization fail loudly.
 - `default` — preferred port, tried first during dev-lane allocation. Plays the stable-fixture role too when `stable_port` is absent.
 - `health_path` — optional HTTP path. When declared, the manifest emits `ports.<name>.healthUrl` as `http://localhost:<port><health_path>`. Devlane itself does not probe this URL; it is for agents and tooling.
 - `stable_port` — optional. When declared, the stable lane asserts this port as a fixture at `prepare` time. Omit to let `default` play both roles. Declaring `stable_port` lets teams have a distinct dev-lane preference (via `default`) from the stable fixture.

@@ -268,11 +268,20 @@ func ComputeEnv(laneManifest manifest.Manifest, adapter *config.AdapterConfig) (
 		env[key] = rendered
 	}
 
-	for name, port := range laneManifest.Ports {
+	portEnvKeys := make(map[string]string, len(adapter.Ports))
+	for _, portConfig := range adapter.Ports {
+		port, ok := laneManifest.Ports[portConfig.Name]
+		if !ok {
+			continue
+		}
 		if !port.Allocated {
 			continue
 		}
-		key := portEnvKey(name)
+		key := portEnvKey(portConfig.Name)
+		if existing, ok := portEnvKeys[key]; ok && existing != portConfig.Name {
+			return nil, fmt.Errorf("port env key collision: %q and %q both render %s", existing, portConfig.Name, key)
+		}
+		portEnvKeys[key] = portConfig.Name
 		env[key] = strconv.Itoa(port.Port)
 	}
 
