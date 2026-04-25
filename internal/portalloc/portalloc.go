@@ -51,10 +51,15 @@ type hostConfig struct {
 
 type catalog struct {
 	Schema      int          `json:"schema"`
-	Allocations []allocation `json:"allocations"`
+	Allocations []Allocation `json:"allocations"`
 }
 
-type allocation struct {
+// Allocation is a single row in the host catalog. It carries the durable
+// identity fields for an (app, repoPath, service) tuple plus the metadata that
+// prepare refreshes on every run. Allocation is the row type returned by List
+// and is the storage shape persisted to catalog.json — see
+// schemas/catalog.schema.json and docs/65-host-catalog.md.
+type Allocation struct {
 	App          string `json:"app"`
 	Lane         string `json:"lane"`
 	Mode         string `json:"mode"`
@@ -105,6 +110,22 @@ func HasAllocation(lane Lane) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// List returns every allocation in the host catalog. The catalog file is read
+// without acquiring the catalog lock; the lock-then-rename write discipline
+// guarantees readers observe either the pre-write or post-write file in full,
+// never a partially written one. A missing catalog file returns an empty slice
+// and no error. A malformed file returns an error naming the catalog path.
+func List() ([]Allocation, error) {
+	cat, err := loadCatalog()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Allocation, len(cat.Allocations))
+	copy(out, cat.Allocations)
+	return out, nil
 }
 
 func BeginPrepare(adapter *config.AdapterConfig, lane Lane) (*PrepareSession, error) {
@@ -207,7 +228,7 @@ func resolve(adapter *config.AdapterConfig, lane Lane, cfg hostConfig, cat *cata
 	reserved := reservedPorts(cfg, adapter)
 	held, byService := indexAllocations(cat, lane, len(adapter.Ports))
 	now := time.Now().UTC().Format(time.RFC3339)
-	claimed := make(map[int]allocation, len(adapter.Ports))
+	claimed := make(map[int]Allocation, len(adapter.Ports))
 
 	ready := true
 	for _, portConfig := range adapter.Ports {
@@ -252,9 +273,9 @@ func reservedPorts(cfg hostConfig, adapter *config.AdapterConfig) map[int]struct
 	return reserved
 }
 
-func indexAllocations(cat *catalog, lane Lane, serviceCount int) (map[int]allocation, map[string]*allocation) {
-	held := make(map[int]allocation, len(cat.Allocations))
-	byService := make(map[string]*allocation, serviceCount)
+func indexAllocations(cat *catalog, lane Lane, serviceCount int) (map[int]Allocation, map[string]*Allocation) {
+	held := make(map[int]Allocation, len(cat.Allocations))
+	byService := make(map[string]*Allocation, serviceCount)
 	for i := range cat.Allocations {
 		row := &cat.Allocations[i]
 		if row.App == lane.App && sameRepoPath(row.RepoPath, lane.RepoPath) {
@@ -265,7 +286,7 @@ func indexAllocations(cat *catalog, lane Lane, serviceCount int) (map[int]alloca
 	return held, byService
 }
 
-func reusedAllocationState(existing *allocation, portConfig config.PortConfig, lane Lane, now string, commit bool) (State, bool) {
+func reusedAllocationState(existing *Allocation, portConfig config.PortConfig, lane Lane, now string, commit bool) (State, bool) {
 	if !reuseExistingAllocation(existing, portConfig, lane) {
 		return State{}, false
 	}
@@ -282,10 +303,10 @@ func reusedAllocationState(existing *allocation, portConfig config.PortConfig, l
 	}, true
 }
 
-func resolveNewAllocationState(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserved map[int]struct{}, held, claimed map[int]allocation, now string, commit bool) (State, allocation, error) {
+func resolveNewAllocationState(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserved map[int]struct{}, held, claimed map[int]Allocation, now string, commit bool) (State, Allocation, error) {
 	port, err := choosePort(portConfig, lane, cfg, reserved, held, claimed)
 	if err != nil {
-		return State{}, allocation{}, err
+		return State{}, Allocation{}, err
 	}
 
 	state := State{
@@ -293,7 +314,7 @@ func resolveNewAllocationState(portConfig config.PortConfig, lane Lane, cfg host
 		Allocated: commit,
 		HealthURL: healthURL(port, portConfig.HealthPath),
 	}
-	row := allocation{
+	row := Allocation{
 		App:          lane.App,
 		Lane:         lane.Name,
 		Mode:         lane.Mode,
@@ -306,7 +327,7 @@ func resolveNewAllocationState(portConfig config.PortConfig, lane Lane, cfg host
 	return state, row, nil
 }
 
-func publishResolvedAllocation(cat *catalog, existing *allocation, row allocation) {
+func publishResolvedAllocation(cat *catalog, existing *Allocation, row Allocation) {
 	if existing == nil {
 		cat.Allocations = append(cat.Allocations, row)
 		return
@@ -319,7 +340,7 @@ func publishResolvedAllocation(cat *catalog, existing *allocation, row allocatio
 	existing.LastPrepared = row.LastPrepared
 }
 
-func reuseExistingAllocation(existing *allocation, portConfig config.PortConfig, lane Lane) bool {
+func reuseExistingAllocation(existing *Allocation, portConfig config.PortConfig, lane Lane) bool {
 	if existing == nil {
 		return false
 	}
@@ -329,7 +350,7 @@ func reuseExistingAllocation(existing *allocation, portConfig config.PortConfig,
 	return existing.Port == stablePort(portConfig)
 }
 
-func choosePort(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserved map[int]struct{}, held, claimed map[int]allocation) (int, error) {
+func choosePort(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserved map[int]struct{}, held, claimed map[int]Allocation) (int, error) {
 	if lane.Stable {
 		return chooseStablePort(portConfig, reserved, held, claimed)
 	}
@@ -347,7 +368,7 @@ func choosePort(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserve
 	return 0, fmt.Errorf("no available port found for service %q", portConfig.Name)
 }
 
-func chooseStablePort(portConfig config.PortConfig, reserved map[int]struct{}, held, claimed map[int]allocation) (int, error) {
+func chooseStablePort(portConfig config.PortConfig, reserved map[int]struct{}, held, claimed map[int]Allocation) (int, error) {
 	fixture := stablePort(portConfig)
 	ok, err := candidateAvailable(fixture, reserved, held, claimed)
 	if err != nil {
@@ -359,7 +380,7 @@ func chooseStablePort(portConfig config.PortConfig, reserved map[int]struct{}, h
 	return fixture, nil
 }
 
-func candidateAvailable(port int, reserved map[int]struct{}, held, claimed map[int]allocation) (bool, error) {
+func candidateAvailable(port int, reserved map[int]struct{}, held, claimed map[int]Allocation) (bool, error) {
 	if !isAvailable(port, reserved, held, claimed) {
 		return false, nil
 	}
@@ -399,7 +420,7 @@ func devCandidates(portConfig config.PortConfig, cfg hostConfig) []int {
 	return candidates
 }
 
-func isAvailable(port int, reserved map[int]struct{}, held, claimed map[int]allocation) bool {
+func isAvailable(port int, reserved map[int]struct{}, held, claimed map[int]Allocation) bool {
 	if _, ok := reserved[port]; ok {
 		return false
 	}
@@ -508,24 +529,24 @@ func loadCatalog() (*catalog, error) {
 
 	payload, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return &catalog{Schema: catalogSchema, Allocations: []allocation{}}, nil
+		return &catalog{Schema: catalogSchema, Allocations: []Allocation{}}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
+		return nil, fmt.Errorf("read catalog %s: %w", path, err)
 	}
 
 	var cat catalog
 	if err := json.Unmarshal(payload, &cat); err != nil {
-		return nil, fmt.Errorf("decode catalog: %w", err)
+		return nil, fmt.Errorf("decode catalog %s: %w", path, err)
 	}
 	if cat.Schema == 0 {
 		cat.Schema = catalogSchema
 	}
 	if cat.Schema != catalogSchema {
-		return nil, fmt.Errorf("unsupported catalog schema %d", cat.Schema)
+		return nil, fmt.Errorf("unsupported catalog schema %d in %s", cat.Schema, path)
 	}
 	if cat.Allocations == nil {
-		cat.Allocations = []allocation{}
+		cat.Allocations = []Allocation{}
 	}
 	normalizeLegacyAllocations(&cat)
 	sortCatalog(&cat)
@@ -598,14 +619,14 @@ func normalizeLegacyAllocations(cat *catalog) {
 	}
 }
 
-func defaultLegacyMode(row *allocation) string {
+func defaultLegacyMode(row *Allocation) string {
 	if strings.EqualFold(strings.TrimSpace(row.Lane), "stable") {
 		return "stable"
 	}
 	return "dev"
 }
 
-func defaultLegacyBranch(row *allocation) string {
+func defaultLegacyBranch(row *Allocation) string {
 	if lane := strings.TrimSpace(row.Lane); lane != "" {
 		return lane
 	}
