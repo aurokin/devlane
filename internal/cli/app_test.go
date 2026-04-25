@@ -482,6 +482,166 @@ func TestHybridUpPrintsRunCommandsBeforeFailingOnStaleGeneratedOutput(t *testing
 	}
 }
 
+func TestPrepareAndUpSmokeForRuntimePatterns(t *testing.T) {
+	tests := []prepareUpSmokeCase{
+		{
+			name: "containerized example",
+			initRepo: func(t *testing.T) string {
+				return initExampleRepo(t, filepath.Join("examples", "minimal-web"))
+			},
+			expectedOutputs: []string{
+				filepath.Join(".devlane", "manifest.json"),
+				filepath.Join(".devlane", "compose.env"),
+				filepath.Join(".devlane", "generated", "app.env"),
+			},
+			wantUpSubstrings: []string{
+				"docker compose",
+				"--env-file",
+				"-p demoapp_feature-example-lane",
+				" up",
+			},
+			rejectSubstrings: []string{
+				"Bare-metal commands for lane",
+				"run `devlane prepare` first",
+			},
+		},
+		{
+			name: "bare-metal generated adapter",
+			initRepo: func(t *testing.T) string {
+				return initBareMetalGeneratedRepo(t)
+			},
+			expectedOutputs: []string{
+				filepath.Join(".devlane", "manifest.json"),
+				filepath.Join(".devlane", "generated", "app.env"),
+			},
+			wantUpSubstrings: []string{
+				"Bare-metal commands for lane",
+				"npm run dev",
+			},
+			rejectSubstrings: []string{
+				"docker compose",
+				"run `devlane prepare` first",
+			},
+		},
+		{
+			name: "hybrid example",
+			initRepo: func(t *testing.T) string {
+				return initExampleRepo(t, filepath.Join("examples", "hybrid-web"))
+			},
+			expectedOutputs: []string{
+				filepath.Join(".devlane", "manifest.json"),
+				filepath.Join(".devlane", "compose.env"),
+				".env.local",
+			},
+			wantUpSubstrings: []string{
+				"Bare-metal commands for lane",
+				"bin/rails server -p",
+				"bin/sidekiq",
+				"docker compose",
+				"-p hybridweb_feature-example-lane",
+				" up",
+			},
+			rejectSubstrings: []string{
+				"run `devlane prepare` first",
+			},
+			assertOutputOrder: func(t *testing.T, stdout string) {
+				t.Helper()
+
+				commandsIndex := strings.Index(stdout, "Bare-metal commands for lane")
+				composeIndex := strings.Index(stdout, "docker compose")
+				if commandsIndex == -1 || composeIndex == -1 || commandsIndex > composeIndex {
+					t.Fatalf("expected bare-metal commands before compose command, got:\n%s", stdout)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runPrepareUpSmokeCase(t, tt)
+		})
+	}
+}
+
+type prepareUpSmokeCase struct {
+	name              string
+	initRepo          func(t *testing.T) string
+	expectedOutputs   []string
+	wantUpSubstrings  []string
+	rejectSubstrings  []string
+	assertOutputOrder func(t *testing.T, stdout string)
+}
+
+func runPrepareUpSmokeCase(t *testing.T, tt prepareUpSmokeCase) {
+	t.Helper()
+
+	repo := tt.initRepo(t)
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	assertContains(t, stdout, "prepared lane", "prepare stdout")
+	for _, outputPath := range tt.expectedOutputs {
+		assertPathExists(t, filepath.Join(repo, outputPath))
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"up",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--dry-run",
+	})
+	if code != 0 {
+		t.Fatalf("expected up exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no up stderr, got:\n%s", stderr)
+	}
+	assertAllContain(t, stdout, tt.wantUpSubstrings, "up stdout")
+	assertNoneContain(t, stdout, stderr, tt.rejectSubstrings)
+	if tt.assertOutputOrder != nil {
+		tt.assertOutputOrder(t, stdout)
+	}
+}
+
+func assertPathExists(t *testing.T, path string) {
+	t.Helper()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected path %s: %v", path, err)
+	}
+}
+
+func assertAllContain(t *testing.T, output string, substrings []string, label string) {
+	t.Helper()
+
+	for _, substring := range substrings {
+		assertContains(t, output, substring, label)
+	}
+}
+
+func assertContains(t *testing.T, output, substring, label string) {
+	t.Helper()
+
+	if !strings.Contains(output, substring) {
+		t.Fatalf("expected %s to contain %q, got:\n%s", label, substring, output)
+	}
+}
+
+func assertNoneContain(t *testing.T, stdout, stderr string, substrings []string) {
+	t.Helper()
+
+	for _, substring := range substrings {
+		if strings.Contains(stdout, substring) || strings.Contains(stderr, substring) {
+			t.Fatalf("did not expect output to contain %q\nstdout:\n%s\nstderr:\n%s", substring, stdout, stderr)
+		}
+	}
+}
+
 func TestPrepareAllocatesDistinctPortsAcrossLanes(t *testing.T) {
 	repoA := testutil.InitDemoRepo(t)
 	repoB := testutil.InitDemoRepo(t)
