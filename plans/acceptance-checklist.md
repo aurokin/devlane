@@ -151,69 +151,11 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 
 ## Phase 2 acceptance
 
-### Host catalog
+Phase 2 acceptance is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Each issue carries its own acceptance criteria.
 
-- `os.UserConfigDir()/devlane/catalog.json` is created on first `prepare` and survives process exits
-- `os.UserConfigDir()/devlane/config.yaml` is optional and reasonable defaults apply when it is missing
-- malformed `os.UserConfigDir()/devlane/config.yaml` fails clearly and is covered by `schemas/config.schema.json` validation tests
-- catalog writes use `fcntl.flock` on `catalog.json.lock` in the devlane user config dir + atomic rename
-- catalog write lock acquire timeout is 30 seconds; failure prints a clear message
-- catalog reads do not take the lock
-- `prepare` allocates a port for every adapter-declared service
-- allocation order for multiple services is adapter declaration order, with earlier selections held in memory while later services are resolved
-- allocations are sticky across `up`/`down`/`up` cycles
-- `prepare` does not re-probe existing allocations
-- `inspect --json` always recomputes from adapter + catalog once Phase 2 lands; it never reads `.devlane/manifest.json`
-- `inspect --json` works before `prepare` has ever run; emits `ready: false` and `allocated: false` for pre-prepare ports
-- for pre-prepare dev lanes, `inspect --json` computes provisional `ports.<name>.port` values against the live catalog using the current allocator; these values are not reserved and may still change before `prepare`
-- for pre-prepare stable lanes, `inspect --json` emits the stable fixture (`stable_port` when declared, otherwise `default`) as the provisional `ports.<name>.port` only when that fixture is currently usable; otherwise `inspect --json` fails with the same unavailability condition `prepare` would surface
-- `ready` remains an allocation-state signal only; it is not a proxy for successful repo-local writes or "prepare definitely ran"
-- `down` does not modify the catalog
-- stable lanes treat `stable_port` as a fixture when declared, otherwise `default`
-- stable-lane `prepare` fails loudly on any collision (no silent fallback to pool)
-- a same-checkout dev allocation does not override stable fixture semantics: stable `inspect --json` reports the fixture provisionally, and stable `prepare` updates that existing row onto the fixture when it is available
-- stable-vs-stable collision prints both adapter paths; no command to paste
-- stable-vs-offline-dev collision prints a ready-to-paste `reassign --lane ... --force && prepare`
-- stable-vs-bound-dev collision prints a runtime-shaped recipe: compose-backed lanes may use `devlane down`, but pure bare-metal lanes are told to stop their own process outside devlane before `reassign --force` / `prepare`; plain `reassign` would no-op once the old port is free
-- `devlane port <service>` prints a plain number by default
-- `devlane port <service>` fails clearly when the service has no assigned allocation yet and points at `inspect --json` for the current provisional candidate or `prepare` to commit one
-- `devlane port <service> --probe` exits non-zero when the assigned port is not bindable
-- `--probe` tests both `0.0.0.0` and `::` (IPv6 with V6ONLY=1), TCP-only
-- `devlane reassign <service>` is a no-op when the current port is free unless `--force` is passed
-- `devlane reassign <service>` only moves the requested service
-- `devlane reassign <service> --force` intentionally moves an offline checkout aside even when its current port is free
-- `prepare` validates repo-local failures before catalog work, computes catalog mutations under lock, stages repo-local writes to temp files, promotes them in deterministic order, and publishes the catalog only after those promotions succeed
-- a failed `prepare` or `reassign` write phase does not publish new catalog state or make `inspect --json` look more prepared than the last successful publish; existing `ready` state may still reflect prior allocations because `ready` is not a local-write-freshness bit
-- if a repo-local promotion fails after earlier outputs were already promoted, the command restores those outputs from snapshots and leaves the catalog unpublished
-- if catalog publish succeeds but lock release fails, repo-local outputs and published catalog state remain in place; the command reports the lock-close failure without rolling anything back
-- `devlane reassign <service> --lane <name>` can target another checkout of the same app by lane metadata when repo context is supplied by the current repo or by `--config` / `--cwd`
-- if `reassign --lane` falls back to a repo-less catalog lookup, it succeeds only when exactly one matching selector row exists; any multiple match fails with a clear ambiguity error
-- top-level manifest fields are exactly: `schema`, `app`, `kind`, `ready`, `lane`, `paths`, `network`, `ports`, `compose`, `outputs` (no top-level `env`, `repo`, or `health`)
-- `ready` is `true` iff every declared port has `allocated: true`; `true` when the adapter declares no ports
-- template scope flattens `ports.<name>` to the integer port number (not the `{port, allocated, healthUrl}` object); templates use `{{ports.web}}` to get `3100`
-- `devlane host status` lists every allocation on the host in deterministic order (`app`, `repoPath`, `service`)
-- successful `host status` reads exit `0`; non-zero is reserved for invocation, config, or read failures
-- `devlane host doctor` is read-only and does not mutate the catalog
-- `devlane host doctor` probes every allocation and reports `bound` / `free` status for operator context, missing repos, missing service declarations, app/repo-path drift, and duplicate catalog claims
-- `devlane host doctor` does not treat a singly claimed bound port as an error by itself; host-wide probing cannot prove ownership for bare-metal lanes
-- `devlane host doctor` exits non-zero when any allocation is stale or when duplicate catalog claims exist
-- `devlane host doctor` does not delete stale entries; cleanup remains explicit via `host gc`
-- `devlane host gc` removes entries whose `repoPath` is missing, whose service is no longer declared, OR whose current `app` at `repoPath` no longer matches the catalog row
-- `devlane host doctor` and `host gc` define repo-identity drift by loading the adapter at `repoPath` and re-deriving the current `app` for that checkout
-- `devlane host gc` supports `--app`, `--dry-run`, and `--yes`
-- `devlane host gc` never removes an entry without an explicit action (prompt or `--yes`)
-- `devlane host gc` in non-interactive mode fails unless `--yes` or `--dry-run` is provided
-- reserved ports in `config.yaml` are never allocated, even when they match a dev-lane adapter's declared `default`
-- adapter-level `reserved` is merged with host `reserved` at allocation time; additive only
-- `pool_hint: [low, high]` is walked before the host-wide `port_range` during dev-lane pool allocation
-- `pool_hint` falls back silently to `port_range` when it sits outside the host range
-- stable-lane `prepare` fails when its fixture (`stable_port` or `default`) is in effective `reserved`
-- allocations from the pool stay within `port_range`
-- adapter-declared `default` and `stable_port` are honored even when they sit outside `port_range`
-- once Phase 2 lands, bare-metal `status` reports `bound`, `free`, or `unallocated` for declared services without claiming process ownership, and pre-prepare services stay `unallocated` rather than probing provisional candidates
-- once Phase 2 lands, hybrid `status` adds host-port `bound` / `free` / `unallocated` results alongside compose `ps` output without inferring per-port substrate ownership
-- once Phase 2 lands, `devlane up` never commits provisional ports; it fails clearly and points at `prepare` when any declared port is still unallocated
-- compose-backed `devlane up` verifies `.devlane/compose.env` plus any declared `outputs.generated` against the current manifest/template state and fails clearly instead of starting from stale prepare-owned inputs
+Most originally-planned Phase 2 acceptance items shipped during Phase 1 stabilization (host config persistence, catalog lock-then-rename, IPv4/IPv6 probing with `V6ONLY=1`, sticky allocation, catalog identity model, deterministic multi-service allocation, catalog-coupled `prepare`, manifest `ports` and top-level `ready`, host-port `status` reporting). Those invariants are exercised by the current portalloc and CLI test suites and described in `docs/65-host-catalog.md`.
+
+Remaining Phase 2 acceptance — the operator command surface (`port`, `reassign`, `host status`, `host doctor`, `host gc`), the catalog-mutation primitive, drift detection, lane resolution, the three stable-port collision recipes, and the Windows error copy fix — is owned by the Linear tickets and indexed in `plans/05-host-catalog-commands.md`.
 
 ## Phase 3 acceptance
 

@@ -48,7 +48,7 @@ Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in 
   - **Bare-metal with `runtime.run.commands`**: prints the rendered commands and exits. Devlane does not spawn bare processes.
   - **Bare-metal without `runtime.run.commands`**: no-op with a one-line hint.
   - **Hybrid** (both declared): prints the bare-metal commands first, then verifies the current prepare-owned compose inputs and runs compose.
-  - When the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing commands or running compose and points the caller at `prepare`.
+  - When the adapter declares `ports` and any declared service is still `allocated: false`, `up` fails before printing commands or running compose and points the caller at `prepare`. This gating applies to runtime shapes that actually start something — containerized, bare-metal with `runtime.run.commands`, and hybrid. Pure ports-only bare-metal adapters without `runtime.run.commands` keep the no-op `up` behavior described above.
 
 - `down` — stop the lane.
   - **Containerized**: runs lane-aware `docker compose down`. It does not release catalog ports.

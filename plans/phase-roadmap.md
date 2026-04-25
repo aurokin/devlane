@@ -41,43 +41,39 @@ Deliverables:
 - the docs are explicit about the current template scope, including top-level `ready` and flattened `ports.<name>` values
 - the acceptance checklist can point to this phase without relying on unnamed checklist "groups"
 
-## Phase 2 — host catalog and port allocation
+## Phase 2 — host catalog operator commands
 
-Goal: finish the host-scoped coordination layer as an operator surface across projects on the same machine.
+Goal: ship the operator command surface for the host catalog so port queries, repairs, audits, and cleanup are first-class CLI flows instead of manual catalog edits.
 
 This phase is a prerequisite for worktree lifecycle automation because `worktree create` should register allocations into the catalog when a new lane is spun up.
 
+Phase 1 stabilization shipped most of the originally-planned Phase 2 plumbing. The host config parser, catalog persistence with lock-then-rename atomicity, sticky allocation engine, IPv4/IPv6 probing, catalog-coupled `prepare` orchestration with rollback, manifest `ports` and `ready`, `inspect --json` recompute from live catalog, `status` host-port reporting, the catalog identity model, and the catalog schema at `schemas/catalog.schema.json` are all in place. What remains is the operator surface plus targeted polish.
+
+Execution state is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Per-issue acceptance bars live in Linear; the deliverables below describe the shape.
+
 Deliverables:
 
-- host config at `os.UserConfigDir()/devlane/config.yaml` (user-owned)
-- config schema + tests for `os.UserConfigDir()/devlane/config.yaml`, including malformed-config behavior and explicit defaults when the file is absent: `port_range: 3000-9999`, `reserved: [22, 80, 443, 5432, 6379]`
-- host catalog at `os.UserConfigDir()/devlane/catalog.json` (tool-owned)
-- concurrent-safe catalog writes: `fcntl.flock` on a sidecar lockfile + atomic `os.rename`, 30-second acquire timeout, POSIX-first (Windows deferred)
-- finish hardening the already-landed adapter `ports` field
-- finish hardening the already-landed manifest `ports` section, top-level `ready` flag, and `DEVLANE_PORT_*` env vars
-- catalog-coupled publish semantics for `prepare` and the write half of `reassign`: preflight repo-local failures first, compute mutations under lock, stage and promote repo-local writes deterministically, roll back any already-promoted outputs if a late local promotion fails, and publish `catalog.json` only after required promotions succeed
-- sticky allocation with probing only for first-time allocation and explicit repair / audit commands; existing allocations are never re-probed by `prepare`. Stable lanes treat `stable_port` as the fixture when declared, otherwise `default`, and fail loudly on collision (three scenarios documented in `65-host-catalog.md`)
-- catalog identity model: `(app, repoPath, service)` is the durable key; `mode`, `lane`, and `branch` are refreshed metadata. In-place branch switching updates metadata and is not drift by itself
-- deterministic multi-service allocation: declaration-order walk with in-memory reservation during both `prepare` and provisional `inspect`
-- TCP probing on both `0.0.0.0` and `::` (IPv6 `V6ONLY=1`)
-- `devlane port <service>` with `--verbose` and `--probe`. The command remains about assigned ports, not provisional candidates: before first `prepare` for that service it fails clearly and points callers at `inspect --json` (for the current provisional candidate) or `prepare` (to commit one)
-- `devlane reassign <service>` — idempotent, scoped, supports `--force` for intentional displacement of an offline lane and `--lane <name>` as a metadata selector; any multi-match on that selector fails loudly
-- `up` never commits provisional host ports. When an adapter declares `ports` and any required service is still `allocated: false`, `up` fails clearly and points the caller at `prepare`
-- `devlane host status`, `host doctor`, `host gc`:
-  `host doctor` is primarily a stale-entry and duplicate-claim audit. It reports probe results (`bound` / `free`) for operator context but does not treat a singly claimed bound port as an error by itself, because host-wide probing cannot prove process ownership for bare-metal lanes
-  staleness = missing repoPath OR missing service declaration OR app mismatch at repoPath
-  duplicate claims (multiple catalog rows for one port) are explicit failures
-  `host gc` in non-interactive mode fails unless `--yes` or `--dry-run` is provided
-- repo-identity drift handling in host audits and cleanup: treat a row as drifted when the adapter currently loaded from `repoPath` no longer identifies the same app. Branch or lane-label changes at that checkout are metadata refreshes, not drift
-- collision remediation docs that distinguish runtime shape: recipes may tell compose-backed lanes to use `devlane down`, but pure bare-metal lanes must be told to stop their own processes outside devlane before `reassign --force` / `prepare`, because plain `reassign` would no-op once the old port is free
-- catalog schema at `schemas/catalog.schema.json`
-- agent playbook section on conflict handling
+- exported catalog API in the port-allocation package: an `Allocation` row type and a no-lock `List()` reader, used by every subsequent operator command
+- exported `Mutate(fn)` callback-style mutation primitive in the port-allocation package wrapping the existing lock-then-rename discipline; this is the single contract every write-side host-state mutation builds on
+- a lane resolver module: catalog + repo context (app + repoPath, symlink-evaluated) + lane name → single match / ambiguity / not-found. Repo context is mandatory; the resolver never scans across apps. Worktrees of the same app match
+- a drift detection module: catalog snapshot + injected adapter loader → categorized findings (missing-repoPath, missing-service, app-mismatch, duplicate-claim). Pure logic, no I/O of its own. Shared by `host doctor` and `host gc`
+- `devlane port <service>` with `--verbose` and `--probe`. The command remains about assigned ports, not provisional candidates: before first `prepare` for that service it fails clearly and points callers at `inspect --json` (for the current provisional candidate) or `prepare` (to commit one). `--probe` always prints the port to stdout regardless of probe outcome and signals success/failure via exit code only
+- `devlane reassign <service>` — idempotent on a bindable port, supports `--force` for intentional displacement of an offline lane and `--lane <name>` as a metadata selector. `--lane` requires repo context (works from main repo or any worktree of the same app); any multi-match fails loudly. Mutation scope is the requested service only
+- `devlane host status` listing every catalog row in deterministic `(app, repoPath, service)` order, read-only, no lock acquired
+- `devlane host doctor` — read-only audit using the drift module. Reports probe results (`bound` / `free`) for operator context but does not treat a singly claimed bound port as an error by itself, because host-wide probing cannot prove process ownership for bare-metal lanes. Exits 1 on any finding
+- `devlane host gc` — uses the drift module to identify removable rows (missing-repoPath, missing-service, app-mismatch). Supports `--app`, `--dry-run`, `--yes`; non-interactive mode fails unless `--yes` or `--dry-run` is provided. Mutates via `Mutate`. Duplicate-claim findings are surfaced for operator awareness but are not auto-removed. Bound-but-singly-claimed rows are never removed. `worktree.seed` is not considered (Phase 3 territory)
+- collision messaging for the three documented stable-port scenarios via a small collision-message formatter module: scenario 1 (held by another app's stable) retains manual-resolution prose; scenarios 2 (held by an offline dev lane) and 3 (held by a bound dev lane) emit copy-pasteable `reassign --lane … --force` recipes. Bare-metal recipes still tell users to stop their own processes outside devlane before `reassign --force` / `prepare`, because plain `reassign` would no-op once the old port is free
+- `docs/65-host-catalog.md` collision recovery section and `docs/80-agent-playbook.md` conflict-handling section updated to use the new commands
+- Windows catalog-lock error message upgraded to point at the deferred-roadmap entry (no behavioral change to locking)
+- `up` continues to fail before printing or running anything when an adapter declares `runtime.compose_files` or `runtime.run.commands` and any declared port is still `allocated: false`. Pure ports-only bare-metal adapters without `runtime.run.commands` remain a no-op `up` path; gating those is deferred and intentionally not part of Phase 2
 
 ### Phase 2 is done when
 
-- the catalog is the sole durable authority for assigned ports, while `inspect --json` remains the fresh read surface and `.devlane/manifest.json` remains only a snapshot
-- collision handling, `reassign --lane`, and `host doctor` / `host gc` all have one ambiguity rule and one stale-entry rule shared across docs, tests, and user-facing messages
-- host-wide coordination is strict about stable fixtures and explicit about what it can and cannot infer from probes
+- the operator command surface (`port`, `reassign`, `host status`, `host doctor`, `host gc`) is shipped, documented, and tested
+- the catalog mutation primitive is the single contract every write-side host-state mutation uses
+- collision messages name the new commands and ship copy-pasteable recipes for scenarios 2 and 3
+- the agent playbook conflict-handling section describes the same flow operators follow
+- the catalog remains the sole durable authority for assigned ports, while `inspect --json` remains the fresh read surface and `.devlane/manifest.json` remains only a snapshot
 
 ## Phase 3 — worktree lifecycle (final phase)
 
