@@ -871,10 +871,15 @@ func TestStatusPrintsHybridPortRowsBeforeComposeStatus(t *testing.T) {
 		t.Fatalf("expected free redis row for port %d, got %#v in:\n%s", redisPort, redisRow, stdout)
 	}
 
-	webIndex := strings.Index(stdout, "web")
-	redisIndex := strings.Index(stdout, "redis")
 	composeIndex := strings.Index(stdout, "docker compose")
-	if webIndex == -1 || redisIndex == -1 || composeIndex == -1 || webIndex > redisIndex || redisIndex > composeIndex {
+	servicesIndex := strings.Index(stdout, "Services:\n")
+	if servicesIndex == -1 || composeIndex == -1 || servicesIndex > composeIndex {
+		t.Fatalf("expected service rows before compose status command, got:\n%s", stdout)
+	}
+	servicesBlock := stdout[servicesIndex:composeIndex]
+	webIndex := strings.Index(servicesBlock, "web")
+	redisIndex := strings.Index(servicesBlock, "redis")
+	if webIndex == -1 || redisIndex == -1 || webIndex > redisIndex {
 		t.Fatalf("expected adapter-order service rows before compose status command, got:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "-p hybridweb_feature-example-lane") || !strings.Contains(stdout, " ps") {
