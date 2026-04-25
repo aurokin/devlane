@@ -47,6 +47,7 @@ func TestScanSkipsNestedGitRepos(t *testing.T) {
 
 	nested := filepath.Join(root, "tools", "nested-repo")
 	mustWriteFile(t, filepath.Join(nested, "package.json"), "{}\n")
+	mustWriteFile(t, filepath.Join(nested, "apps", "compose.yaml"), "services: {}\n")
 	runGit(t, nested, "init", "-b", "main")
 
 	candidates, err := initcmd.Scan(root)
