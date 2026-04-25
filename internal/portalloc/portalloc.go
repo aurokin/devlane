@@ -204,6 +204,44 @@ func resolve(adapter *config.AdapterConfig, lane Lane, cfg hostConfig, cat *cata
 		return states, true, nil
 	}
 
+	reserved := reservedPorts(cfg, adapter)
+	held, byService := indexAllocations(cat, lane, len(adapter.Ports))
+	now := time.Now().UTC().Format(time.RFC3339)
+	claimed := make(map[int]allocation, len(adapter.Ports))
+
+	ready := true
+	for _, portConfig := range adapter.Ports {
+		existing := byService[portConfig.Name]
+		if state, ok := reusedAllocationState(existing, portConfig, lane, now, commit); ok {
+			states[portConfig.Name] = state
+			claimed[state.Port] = *existing
+			continue
+		}
+
+		if existing != nil {
+			delete(held, existing.Port)
+		}
+
+		state, row, err := resolveNewAllocationState(portConfig, lane, cfg, reserved, held, claimed, now, commit)
+		if err != nil {
+			return nil, false, err
+		}
+		states[portConfig.Name] = state
+		if !state.Allocated {
+			ready = false
+		}
+
+		claimed[state.Port] = row
+		if commit {
+			publishResolvedAllocation(cat, existing, row)
+		}
+	}
+
+	sortCatalog(cat)
+	return states, ready, nil
+}
+
+func reservedPorts(cfg hostConfig, adapter *config.AdapterConfig) map[int]struct{} {
 	reserved := make(map[int]struct{}, len(cfg.Reserved)+len(adapter.Reserved))
 	for _, port := range cfg.Reserved {
 		reserved[port] = struct{}{}
@@ -211,9 +249,12 @@ func resolve(adapter *config.AdapterConfig, lane Lane, cfg hostConfig, cat *cata
 	for _, port := range adapter.Reserved {
 		reserved[port] = struct{}{}
 	}
+	return reserved
+}
 
+func indexAllocations(cat *catalog, lane Lane, serviceCount int) (map[int]allocation, map[string]*allocation) {
 	held := make(map[int]allocation, len(cat.Allocations))
-	byService := make(map[string]*allocation, len(adapter.Ports))
+	byService := make(map[string]*allocation, serviceCount)
 	for i := range cat.Allocations {
 		row := &cat.Allocations[i]
 		if row.App == lane.App && sameRepoPath(row.RepoPath, lane.RepoPath) {
@@ -221,74 +262,61 @@ func resolve(adapter *config.AdapterConfig, lane Lane, cfg hostConfig, cat *cata
 		}
 		held[row.Port] = *row
 	}
+	return held, byService
+}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	claimed := make(map[int]allocation, len(adapter.Ports))
+func reusedAllocationState(existing *allocation, portConfig config.PortConfig, lane Lane, now string, commit bool) (State, bool) {
+	if !reuseExistingAllocation(existing, portConfig, lane) {
+		return State{}, false
+	}
+	if commit {
+		existing.Lane = lane.Name
+		existing.Mode = lane.Mode
+		existing.Branch = lane.Branch
+		existing.LastPrepared = now
+	}
+	return State{
+		Port:      existing.Port,
+		Allocated: true,
+		HealthURL: healthURL(existing.Port, portConfig.HealthPath),
+	}, true
+}
 
-	ready := true
-	for _, portConfig := range adapter.Ports {
-		if existing := byService[portConfig.Name]; existing != nil && reuseExistingAllocation(existing, portConfig, lane) {
-			states[portConfig.Name] = State{
-				Port:      existing.Port,
-				Allocated: true,
-				HealthURL: healthURL(existing.Port, portConfig.HealthPath),
-			}
-			claimed[existing.Port] = *existing
-			if commit {
-				existing.Lane = lane.Name
-				existing.Mode = lane.Mode
-				existing.Branch = lane.Branch
-				existing.LastPrepared = now
-			}
-			continue
-		}
-
-		existing := byService[portConfig.Name]
-		if existing != nil {
-			delete(held, existing.Port)
-		}
-
-		port, err := choosePort(portConfig, lane, cfg, reserved, held, claimed)
-		if err != nil {
-			return nil, false, err
-		}
-
-		state := State{
-			Port:      port,
-			Allocated: commit,
-			HealthURL: healthURL(port, portConfig.HealthPath),
-		}
-		states[portConfig.Name] = state
-		if !state.Allocated {
-			ready = false
-		}
-
-		row := allocation{
-			App:          lane.App,
-			Lane:         lane.Name,
-			Mode:         lane.Mode,
-			Branch:       lane.Branch,
-			Service:      portConfig.Name,
-			Port:         port,
-			RepoPath:     lane.RepoPath,
-			LastPrepared: now,
-		}
-		claimed[port] = row
-		if commit {
-			if existing != nil {
-				existing.Lane = lane.Name
-				existing.Mode = lane.Mode
-				existing.Branch = lane.Branch
-				existing.Port = port
-				existing.LastPrepared = now
-			} else {
-				cat.Allocations = append(cat.Allocations, row)
-			}
-		}
+func resolveNewAllocationState(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserved map[int]struct{}, held, claimed map[int]allocation, now string, commit bool) (State, allocation, error) {
+	port, err := choosePort(portConfig, lane, cfg, reserved, held, claimed)
+	if err != nil {
+		return State{}, allocation{}, err
 	}
 
-	sortCatalog(cat)
-	return states, ready, nil
+	state := State{
+		Port:      port,
+		Allocated: commit,
+		HealthURL: healthURL(port, portConfig.HealthPath),
+	}
+	row := allocation{
+		App:          lane.App,
+		Lane:         lane.Name,
+		Mode:         lane.Mode,
+		Branch:       lane.Branch,
+		Service:      portConfig.Name,
+		Port:         port,
+		RepoPath:     lane.RepoPath,
+		LastPrepared: now,
+	}
+	return state, row, nil
+}
+
+func publishResolvedAllocation(cat *catalog, existing *allocation, row allocation) {
+	if existing == nil {
+		cat.Allocations = append(cat.Allocations, row)
+		return
+	}
+
+	existing.Lane = row.Lane
+	existing.Mode = row.Mode
+	existing.Branch = row.Branch
+	existing.Port = row.Port
+	existing.LastPrepared = row.LastPrepared
 }
 
 func reuseExistingAllocation(existing *allocation, portConfig config.PortConfig, lane Lane) bool {

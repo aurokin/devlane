@@ -168,61 +168,68 @@ func runPrepare(args []string) int {
 		return exitError(err)
 	}
 
-	needsCatalogPrepare := len(adapter.Ports) > 0
-	if !needsCatalogPrepare {
-		needsCatalogPrepare, err = portalloc.HasAllocation(portalloc.Lane{
-			App:      adapter.App,
-			RepoPath: laneManifest.Lane.RepoRoot,
-			Name:     laneManifest.Lane.Name,
-			Mode:     laneManifest.Lane.Mode,
-			Branch:   laneManifest.Lane.Branch,
-			Stable:   laneManifest.Lane.Stable,
-		})
-		if err != nil {
-			return exitError(err)
-		}
+	catalogLane := portallocLane(adapter, laneManifest)
+	needsCatalogPrepare, err := needsCatalogPrepare(adapter, catalogLane)
+	if err != nil {
+		return exitError(err)
 	}
 
 	if needsCatalogPrepare {
-		session, err := portalloc.BeginPrepare(adapter, portalloc.Lane{
-			App:      adapter.App,
-			RepoPath: laneManifest.Lane.RepoRoot,
-			Name:     laneManifest.Lane.Name,
-			Mode:     laneManifest.Lane.Mode,
-			Branch:   laneManifest.Lane.Branch,
-			Stable:   laneManifest.Lane.Stable,
-		})
-		if err != nil {
-			return exitError(err)
-		}
-		defer session.Close()
-
-		laneManifest = applyPortStates(laneManifest, session.States(), session.Ready())
-
-		result, rollback, err := write.PrepareWithRollback(laneManifest, adapter)
-		if err != nil {
-			return exitError(err)
-		}
-		if err := publishPrepareSession(session); err != nil {
-			if rollbackErr := rollback(); rollbackErr != nil {
-				return exitError(fmt.Errorf("%w; rollback local prepare state: %v", err, rollbackErr))
-			}
-			return exitError(err)
-		}
-		if err := closePrepareSession(session); err != nil {
-			return exitError(fmt.Errorf("prepared lane %q and published catalog state, but failed to release the catalog lock: %w", laneManifest.Lane.Name, err))
-		}
-		for _, message := range result.Messages {
-			fmt.Println(message)
-		}
-
-		fmt.Printf("prepared lane %q at %s\n", laneManifest.Lane.Name, laneManifest.Paths.Manifest)
-		return 0
+		return runCatalogPrepare(adapter, laneManifest, catalogLane)
 	}
 
 	result, err := write.Prepare(laneManifest, adapter)
 	if err != nil {
 		return exitError(err)
+	}
+	for _, message := range result.Messages {
+		fmt.Println(message)
+	}
+
+	fmt.Printf("prepared lane %q at %s\n", laneManifest.Lane.Name, laneManifest.Paths.Manifest)
+	return 0
+}
+
+func portallocLane(adapter *config.AdapterConfig, laneManifest manifest.Manifest) portalloc.Lane {
+	return portalloc.Lane{
+		App:      adapter.App,
+		RepoPath: laneManifest.Lane.RepoRoot,
+		Name:     laneManifest.Lane.Name,
+		Mode:     laneManifest.Lane.Mode,
+		Branch:   laneManifest.Lane.Branch,
+		Stable:   laneManifest.Lane.Stable,
+	}
+}
+
+func needsCatalogPrepare(adapter *config.AdapterConfig, lane portalloc.Lane) (bool, error) {
+	if len(adapter.Ports) > 0 {
+		return true, nil
+	}
+
+	return portalloc.HasAllocation(lane)
+}
+
+func runCatalogPrepare(adapter *config.AdapterConfig, laneManifest manifest.Manifest, lane portalloc.Lane) int {
+	session, err := portalloc.BeginPrepare(adapter, lane)
+	if err != nil {
+		return exitError(err)
+	}
+	defer session.Close()
+
+	laneManifest = applyPortStates(laneManifest, session.States(), session.Ready())
+
+	result, rollback, err := write.PrepareWithRollback(laneManifest, adapter)
+	if err != nil {
+		return exitError(err)
+	}
+	if err := publishPrepareSession(session); err != nil {
+		if rollbackErr := rollback(); rollbackErr != nil {
+			return exitError(fmt.Errorf("%w; rollback local prepare state: %v", err, rollbackErr))
+		}
+		return exitError(err)
+	}
+	if err := closePrepareSession(session); err != nil {
+		return exitError(fmt.Errorf("prepared lane %q and published catalog state, but failed to release the catalog lock: %w", laneManifest.Lane.Name, err))
 	}
 	for _, message := range result.Messages {
 		fmt.Println(message)
@@ -257,36 +264,24 @@ func runUp(args []string) int {
 		return exitError(err)
 	}
 
-	needsPreparedPorts := len(adapter.Ports) > 0 && (adapter.HasCompose() || adapter.HasRunCommands())
-	if needsPreparedPorts && !laneManifest.Ready {
-		return exitError(fmt.Errorf("lane %q has unallocated ports; run `devlane prepare` first", laneManifest.Lane.Name))
+	if err := verifyUpPortReadiness(adapter, laneManifest); err != nil {
+		return exitError(err)
 	}
 
-	verifiedPreparedOutputs := false
-	if adapter.HasRunCommands() {
-		if err := printRunCommands(laneManifest, adapter); err != nil {
-			return exitError(err)
-		}
-
-		if err := write.VerifyPreparedOutputs(laneManifest, adapter); err != nil {
-			return exitError(err)
-		}
-		verifiedPreparedOutputs = true
-
-		if !adapter.HasCompose() {
-			return 0
-		}
-	} else if !adapter.HasCompose() {
-		fmt.Println("adapter does not declare compose files; nothing to start")
+	printedRunCommands, done, err := handleRunCommandsForUp(laneManifest, adapter)
+	if err != nil {
+		return exitError(err)
+	}
+	if done {
 		return 0
 	}
 
-	if !verifiedPreparedOutputs {
+	if !printedRunCommands {
 		if err := write.VerifyPreparedOutputs(laneManifest, adapter); err != nil {
 			return exitError(err)
 		}
 	}
-	if adapter.HasRunCommands() {
+	if printedRunCommands {
 		fmt.Println()
 	}
 
@@ -301,6 +296,35 @@ func runUp(args []string) int {
 	}
 
 	return compose.Run(command, cwd)
+}
+
+func verifyUpPortReadiness(adapter *config.AdapterConfig, laneManifest manifest.Manifest) error {
+	needsPreparedPorts := len(adapter.Ports) > 0 && (adapter.HasCompose() || adapter.HasRunCommands())
+	if needsPreparedPorts && !laneManifest.Ready {
+		return fmt.Errorf("lane %q has unallocated ports; run `devlane prepare` first", laneManifest.Lane.Name)
+	}
+
+	return nil
+}
+
+func handleRunCommandsForUp(laneManifest manifest.Manifest, adapter *config.AdapterConfig) (bool, bool, error) {
+	if adapter.HasRunCommands() {
+		if err := printRunCommands(laneManifest, adapter); err != nil {
+			return false, false, err
+		}
+
+		if err := write.VerifyPreparedOutputs(laneManifest, adapter); err != nil {
+			return true, false, err
+		}
+		return true, !adapter.HasCompose(), nil
+	}
+
+	if !adapter.HasCompose() {
+		fmt.Println("adapter does not declare compose files; nothing to start")
+		return false, true, nil
+	}
+
+	return false, false, nil
 }
 
 func runDown(args []string) int {

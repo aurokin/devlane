@@ -199,16 +199,7 @@ func scanDir(root, dir string, depth int, candidates *[]Candidate) error {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			continue
-		}
-		if depth > 0 && shouldSkipTree(entry.Name()) {
-			continue
-		}
-		if depth == 0 && shouldSkipTree(entry.Name()) {
+		if !shouldScanEntry(entry) {
 			continue
 		}
 
@@ -219,6 +210,16 @@ func scanDir(root, dir string, depth int, candidates *[]Candidate) error {
 	}
 
 	return nil
+}
+
+func shouldScanEntry(entry os.DirEntry) bool {
+	if !entry.IsDir() {
+		return false
+	}
+	if entry.Type()&os.ModeSymlink != 0 {
+		return false
+	}
+	return !shouldSkipTree(entry.Name())
 }
 
 func detectCandidate(dir string) (Candidate, bool, error) {

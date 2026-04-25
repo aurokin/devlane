@@ -481,24 +481,31 @@ func TestManifestPreservesSymlinkedConfigPathAsAdapterRoot(t *testing.T) {
 }
 
 func TestManifestUsesAdapterRootForDetachedLaneIdentityOutsideGit(t *testing.T) {
+	configPath, firstCWD, secondCWD := setupDetachedAdapterRootFixture(t)
+	firstManifest := buildTestManifest(t, configPath, firstCWD)
+	secondManifest := buildTestManifest(t, configPath, secondCWD)
+
+	if firstManifest.Lane.Name != "web" {
+		t.Fatalf("expected adapter-root lane name, got %q", firstManifest.Lane.Name)
+	}
+	assertDetachedLaneIdentity(t, firstManifest, secondManifest)
+}
+
+func setupDetachedAdapterRootFixture(t *testing.T) (string, string, string) {
+	t.Helper()
+
 	repo := t.TempDir()
 	appDir := filepath.Join(repo, "apps", "web")
 	firstCWD := filepath.Join(appDir, "subdir", "child")
 	secondCWD := filepath.Join(appDir, "other", "leaf")
 	configPath := filepath.Join(appDir, "devlane.yaml")
 
-	if err := os.MkdirAll(filepath.Join(appDir, "templates"), 0o755); err != nil {
-		t.Fatalf("mkdir templates: %v", err)
-	}
+	mustMkdirAll(t, filepath.Join(appDir, "templates"))
 	for _, dir := range []string{firstCWD, secondCWD} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir nested cwd %s: %v", dir, err)
-		}
+		mustMkdirAll(t, dir)
 	}
-	if err := os.WriteFile(filepath.Join(appDir, "templates", "app.env.tmpl"), []byte("APP={{app}}\n"), 0o644); err != nil {
-		t.Fatalf("write template: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte(`
+	mustWriteManifestTestFile(t, filepath.Join(appDir, "templates", "app.env.tmpl"), "APP={{app}}\n")
+	mustWriteManifestTestFile(t, configPath, `
 schema: 1
 app: nested
 kind: web
@@ -515,54 +522,62 @@ outputs:
   generated:
     - template: templates/app.env.tmpl
       destination: .devlane/generated/app.env
-`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+`)
+
+	return configPath, firstCWD, secondCWD
+}
+
+func buildTestManifest(t *testing.T, configPath, cwd string) manifest.Manifest {
+	t.Helper()
 
 	adapter, err := config.LoadAdapter(configPath)
 	if err != nil {
 		t.Fatalf("LoadAdapter returned error: %v", err)
 	}
 
-	firstManifest, err := manifest.Build(adapter, manifest.Options{
-		CWD:        firstCWD,
+	laneManifest, err := manifest.Build(adapter, manifest.Options{
+		CWD:        cwd,
 		ConfigPath: configPath,
 	})
 	if err != nil {
-		t.Fatalf("Build first manifest: %v", err)
+		t.Fatalf("Build manifest: %v", err)
 	}
+	return laneManifest
+}
 
-	secondManifest, err := manifest.Build(adapter, manifest.Options{
-		CWD:        secondCWD,
-		ConfigPath: configPath,
-	})
-	if err != nil {
-		t.Fatalf("Build second manifest: %v", err)
-	}
+func assertDetachedLaneIdentity(t *testing.T, firstManifest, secondManifest manifest.Manifest) {
+	t.Helper()
 
-	if firstManifest.Lane.Name != "web" {
-		t.Fatalf("expected adapter-root lane name, got %q", firstManifest.Lane.Name)
+	assertEqualString(t, secondManifest.Lane.Name, firstManifest.Lane.Name, "stable detached lane name")
+	assertEqualString(t, secondManifest.Lane.Slug, firstManifest.Lane.Slug, "stable detached lane slug")
+	assertEqualString(t, secondManifest.Network.ProjectName, firstManifest.Network.ProjectName, "stable project name")
+	assertEqualString(t, secondManifest.Paths.Manifest, firstManifest.Paths.Manifest, "stable manifest path")
+	assertEqualString(t, secondManifest.Paths.StateRoot, firstManifest.Paths.StateRoot, "stable state root")
+	assertEqualString(t, secondManifest.Paths.CacheRoot, firstManifest.Paths.CacheRoot, "stable cache root")
+	assertEqualString(t, secondManifest.Paths.RuntimeRoot, firstManifest.Paths.RuntimeRoot, "stable runtime root")
+}
+
+func mustMkdirAll(t *testing.T, path string) {
+	t.Helper()
+
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
 	}
-	if secondManifest.Lane.Name != firstManifest.Lane.Name {
-		t.Fatalf("expected stable detached lane name, got %q and %q", firstManifest.Lane.Name, secondManifest.Lane.Name)
+}
+
+func mustWriteManifestTestFile(t *testing.T, path, payload string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(payload), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
-	if secondManifest.Lane.Slug != firstManifest.Lane.Slug {
-		t.Fatalf("expected stable detached lane slug, got %q and %q", firstManifest.Lane.Slug, secondManifest.Lane.Slug)
-	}
-	if secondManifest.Network.ProjectName != firstManifest.Network.ProjectName {
-		t.Fatalf("expected stable project name, got %q and %q", firstManifest.Network.ProjectName, secondManifest.Network.ProjectName)
-	}
-	if secondManifest.Paths.Manifest != firstManifest.Paths.Manifest {
-		t.Fatalf("expected stable manifest path, got %q and %q", firstManifest.Paths.Manifest, secondManifest.Paths.Manifest)
-	}
-	if secondManifest.Paths.StateRoot != firstManifest.Paths.StateRoot {
-		t.Fatalf("expected stable state root, got %q and %q", firstManifest.Paths.StateRoot, secondManifest.Paths.StateRoot)
-	}
-	if secondManifest.Paths.CacheRoot != firstManifest.Paths.CacheRoot {
-		t.Fatalf("expected stable cache root, got %q and %q", firstManifest.Paths.CacheRoot, secondManifest.Paths.CacheRoot)
-	}
-	if secondManifest.Paths.RuntimeRoot != firstManifest.Paths.RuntimeRoot {
-		t.Fatalf("expected stable runtime root, got %q and %q", firstManifest.Paths.RuntimeRoot, secondManifest.Paths.RuntimeRoot)
+}
+
+func assertEqualString(t *testing.T, got, want, label string) {
+	t.Helper()
+
+	if got != want {
+		t.Fatalf("expected %s, got %q and %q", label, want, got)
 	}
 }
 
