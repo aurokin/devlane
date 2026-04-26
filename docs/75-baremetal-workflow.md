@@ -2,7 +2,7 @@
 
 This is the **default runtime pattern** in `devlane`. It is the shape for repos whose services run directly on the host — no containers, no shared ingress proxy, just processes binding real host ports.
 
-This document describes the current workflow. The host catalog already allocates and reports ports through `inspect`, `prepare`, and `status`. The remaining missing operator surface is the planned `port`, `reassign`, and `host *` command set.
+This document describes the current workflow. The host catalog already allocates and reports ports through `inspect`, `prepare`, `port`, and `status`. The remaining missing operator surface is the planned `reassign` and `host *` command set.
 
 The opt-in alternative is containerized: see `70-container-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both (hybrid mode).
 
@@ -109,7 +109,15 @@ Services:
 
 Before the first `prepare`, declared services are still `allocated: false`. In that state, `status` reports them as `unallocated` and may show the current provisional candidate, but it does **not** probe the provisional port. Provisional values from `inspect --json` answer "what would `prepare` pick right now?", not "what is reserved for this lane already?"
 
-There is no dedicated `devlane port <service> --probe` command yet. For health, hit `manifest.ports.<service>.healthUrl` yourself. For bindability, use `status` for the current checkout or perform an OS-level probe yourself.
+For shell-friendly port lookup, use `devlane port <service>`. It prints only the assigned port when the service has a committed catalog allocation, which makes it safe for command substitution:
+
+```bash
+curl "http://localhost:$(devlane port web)/healthz"
+```
+
+Before the first `prepare`, `devlane port <service>` fails instead of printing the provisional candidate from `inspect --json`. Run `inspect --json` when you want to see the candidate, or `prepare` when you want to commit it.
+
+For bindability, use `devlane port <service> --probe`. It still prints the assigned port, exits `0` when the port is bindable, and exits `1` when another process is already listening. For health, hit `manifest.ports.<service>.healthUrl` yourself.
 
 ### Template scope
 

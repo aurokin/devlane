@@ -45,7 +45,7 @@ The scaffold is intentionally small but already includes part of the host-catalo
 - projects `DEVLANE_PORT_*` into generated env when ports have been allocated
 - allocates sticky per-lane ports during `prepare`, with stable fixtures treated strictly
 - builds lane-aware `docker compose` commands for containerized adapters; prints (never runs) bare-metal commands from `runtime.run.commands`
-- exposes `init`, `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
+- exposes `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, and `doctor`
 
 The host catalog itself lives under the OS user config directory: `os.UserConfigDir()/devlane`, with an explicit `XDG_CONFIG_HOME` taking precedence when set. In practice that is typically `~/.config/devlane` on Linux and `~/Library/Application Support/devlane` on macOS.
 
@@ -53,7 +53,6 @@ The host catalog itself lives under the OS user config directory: `os.UserConfig
 
 The remaining unshipped surface is mostly operator and lifecycle work around the catalog:
 
-- `devlane port <service>`
 - `devlane reassign <service>`
 - `devlane host status`, `host doctor`, `host gc`
 - `devlane worktree create` / `worktree remove`
@@ -129,7 +128,7 @@ Keep the remaining implementation work narrow and dependable:
 2. make `inspect --json` authoritative
 3. make `prepare` generate the files that repo currently hand-manages
 4. make `up` and `down` lane-aware via Compose project names
-5. finish the remaining operator surface around the already-shipped host catalog (`port`, `reassign`, `host *`)
+5. finish the remaining operator surface around the already-shipped host catalog (`reassign`, `host *`)
 6. delay worktree create/remove until the manifest and host-catalog contracts feel stable
 
 ## Why this is docs-first

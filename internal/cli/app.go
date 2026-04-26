@@ -57,6 +57,8 @@ func Run(args []string) int {
 		return runInspect(args[1:])
 	case "prepare":
 		return runPrepare(args[1:])
+	case "port":
+		return runPort(args[1:])
 	case "up":
 		return runUp(args[1:])
 	case "down":
@@ -188,6 +190,131 @@ func runPrepare(args []string) int {
 
 	fmt.Printf("prepared lane %q at %s\n", laneManifest.Lane.Name, laneManifest.Paths.Manifest)
 	return 0
+}
+
+func runPort(args []string) int {
+	flags, fs := newCommonFlagSet("port")
+	verbose := fs.Bool("verbose", false, "Print service, port, allocation, lane, and repo path")
+	probe := fs.Bool("probe", false, "Exit 0 only when the assigned port is bindable")
+	if err := fs.Parse(reorderPortArgs(args)); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: devlane port <service> [flags]")
+		return 2
+	}
+
+	service := fs.Arg(0)
+	cwd, configPath, adapter, err := loadAdapter(flags)
+	if err != nil {
+		return exitError(err)
+	}
+
+	inputs, err := manifest.BuildInputs(adapter, manifest.Options{
+		CWD:        cwd,
+		ConfigPath: configPath,
+		LaneName:   flags.lane,
+		Mode:       flags.mode,
+		Profiles:   []string(flags.profiles),
+	})
+	if err != nil {
+		return exitError(err)
+	}
+
+	row, err := assignedPort(adapter, inputs, service)
+	if err != nil {
+		return exitError(err)
+	}
+
+	if *verbose {
+		fmt.Printf("service=%s port=%d allocated=true mode=%s lane=%s repoPath=%s\n", service, row.Port, inputs.Mode, inputs.LaneName, inputs.RepoRoot)
+	} else {
+		fmt.Println(row.Port)
+	}
+
+	if *probe {
+		if err := portalloc.Probe(row.Port); err != nil {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+func reorderPortArgs(args []string) []string {
+	flagArgs := make([]string, 0, len(args))
+	serviceArgs := make([]string, 0, 1)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			serviceArgs = append(serviceArgs, arg)
+			continue
+		}
+
+		flagArgs = append(flagArgs, arg)
+		if portFlagNeedsValue(arg) && i+1 < len(args) {
+			i++
+			flagArgs = append(flagArgs, args[i])
+		}
+	}
+
+	return append(flagArgs, serviceArgs...)
+}
+
+func portFlagNeedsValue(arg string) bool {
+	name := strings.TrimLeft(arg, "-")
+	if name == "" || strings.Contains(name, "=") {
+		return false
+	}
+
+	switch name {
+	case "config", "cwd", "lane", "mode", "profile":
+		return true
+	default:
+		return false
+	}
+}
+
+func assignedPort(adapter *config.AdapterConfig, inputs manifest.Inputs, service string) (portalloc.Allocation, error) {
+	if !adapterDeclaresPort(adapter, service) {
+		return portalloc.Allocation{}, fmt.Errorf("service %q is not declared in the adapter", service)
+	}
+
+	rows, err := portalloc.List()
+	if err != nil {
+		return portalloc.Allocation{}, err
+	}
+
+	for _, row := range rows {
+		if row.App == adapter.App && row.Service == service && sameCatalogRepoPath(row.RepoPath, inputs.RepoRoot) {
+			return row, nil
+		}
+	}
+
+	return portalloc.Allocation{}, fmt.Errorf("no assigned port for service %q; run `devlane inspect --json` to see the current provisional candidate or `devlane prepare` to commit an allocation", service)
+}
+
+func adapterDeclaresPort(adapter *config.AdapterConfig, service string) bool {
+	for _, portConfig := range adapter.Ports {
+		if portConfig.Name == service {
+			return true
+		}
+	}
+	return false
+}
+
+func sameCatalogRepoPath(left, right string) bool {
+	if filepath.Clean(left) == filepath.Clean(right) {
+		return true
+	}
+
+	leftResolved, leftErr := filepath.EvalSymlinks(left)
+	rightResolved, rightErr := filepath.EvalSymlinks(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+
+	return filepath.Clean(leftResolved) == filepath.Clean(rightResolved)
 }
 
 func portallocLane(adapter *config.AdapterConfig, laneManifest manifest.Manifest) portalloc.Lane {
@@ -598,5 +725,5 @@ func exitError(err error) int {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|up|down|status|doctor> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|port|up|down|status|doctor> [flags]")
 }
