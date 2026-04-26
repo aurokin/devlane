@@ -9,6 +9,7 @@ The current CLI is:
 - `init`
 - `inspect`
 - `prepare`
+- `port`
 - `up`
 - `down`
 - `status`
@@ -20,7 +21,6 @@ Host commands:
 
 Not shipped:
 
-- `port`
 - `reassign`
 - `host doctor`
 - `host gc`
@@ -45,6 +45,13 @@ Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in 
   - For stable lanes, `inspect` only emits the fixture when it is currently usable; otherwise it fails with the same unavailability condition `prepare` would surface.
 
 - `prepare` — allocate ports when needed, write the manifest, write `.devlane/compose.env` when compose is declared, and render generated files. If no `devlane.yaml` is found, it points the caller at `devlane init` or an explicit `--config`.
+
+- `port <service>` — print the assigned port for one declared service in the current adapter. It uses the same repo-context flags as `inspect` and `prepare`: `--cwd`, `--config`, `--lane`, and `--mode`.
+  - Default output is a single integer on stdout, newline-terminated. Successful lookup exits `0`.
+  - `--verbose` prints one human-readable line with `service`, `port`, `allocated`, `mode`, `lane`, and `repoPath`.
+  - `--probe` probes the assigned port on both `0.0.0.0` and `[::]` using the same TCP probe as allocation/status. The command still prints the port to stdout. It exits `0` when the port is bindable on both supported families and exits `1` when the probe fails.
+  - `port` reports assigned catalog rows only. It does not print provisional candidates. Before the first `prepare` for a service, it exits `1` with guidance to use `inspect --json` for the current provisional candidate or `prepare` to commit an allocation.
+  - Unknown services, adapter/config errors, malformed catalog state, and missing assigned rows exit non-zero with a message on stderr.
 
 - `up` — start the lane without implicitly mutating state.
   - **Containerized** (`runtime.compose_files`): verifies that the current prepare-owned inputs still match the live manifest/template state, then runs lane-aware `docker compose up`.

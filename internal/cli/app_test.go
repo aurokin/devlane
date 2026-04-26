@@ -186,6 +186,330 @@ func TestPrepareAllocatesPortsAndProjectsComposeEnv(t *testing.T) {
 	}
 }
 
+func TestPortPrintsAssignedPort(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	allocatedPort := preparedPort(t, repo, "web")
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"web",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", allocatedPort) {
+		t.Fatalf("expected single assigned port on stdout, got:\n%s", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got:\n%s", stderr)
+	}
+}
+
+func TestPortVerbosePrintsAllocationContext(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	allocatedPort := preparedPort(t, repo, "web")
+	canonicalRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatalf("canonicalize repo path: %v", err)
+	}
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--verbose",
+		"web",
+	})
+	if code != 0 {
+		t.Fatalf("expected port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	for _, want := range []string{
+		"service=web",
+		fmt.Sprintf("port=%d", allocatedPort),
+		"allocated=true",
+		"mode=dev",
+		"lane=feature/test-lane",
+		fmt.Sprintf("repoPath=%s", canonicalRepo),
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected verbose output to contain %q, got:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestPortProbeSucceedsWhenAssignedPortIsBindable(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	allocatedPort := preparedPort(t, repo, "web")
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"web",
+		"--probe",
+	})
+	if code != 0 {
+		t.Fatalf("expected probe success exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", allocatedPort) {
+		t.Fatalf("expected probe to print assigned port, got:\n%s", stdout)
+	}
+}
+
+func TestPortProbeFailsWhenAssignedPortIsBound(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	defaultPort := freeTCPPort(t)
+	rewriteDemoDefaultPort(t, repo, defaultPort)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	})
+	if code != 0 {
+		t.Fatalf("expected prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	allocatedPort := preparedPort(t, repo, "web")
+	listener, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", allocatedPort))
+	if err != nil {
+		t.Fatalf("listen on allocated port %d: %v", allocatedPort, err)
+	}
+	defer listener.Close()
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--probe",
+		"web",
+	})
+	if code != 1 {
+		t.Fatalf("expected probe failure exit code 1, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", allocatedPort) {
+		t.Fatalf("expected failed probe to still print assigned port, got:\n%s", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected failed probe to signal by exit code only, got stderr:\n%s", stderr)
+	}
+}
+
+func TestPortFailsBeforeAllocation(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"web",
+	})
+	if code != 1 {
+		t.Fatalf("expected pre-allocation exit code 1, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout before allocation, got:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "inspect --json") || !strings.Contains(stderr, "prepare") {
+		t.Fatalf("expected inspect and prepare guidance, got stderr:\n%s", stderr)
+	}
+}
+
+func TestPortStableModeDoesNotReuseDevOnlyAllocation(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	devPort := freeTCPPort(t)
+	stablePort := freeTCPPort(t)
+	if stablePort == devPort {
+		stablePort = freeTCPPort(t)
+	}
+	rewriteDemoStableFixture(t, repo, devPort, stablePort)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "dev",
+	})
+	if code != 0 {
+		t.Fatalf("expected dev prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "dev",
+		"web",
+	})
+	if code != 0 {
+		t.Fatalf("expected dev port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", devPort) {
+		t.Fatalf("expected dev port %d, got:\n%s", devPort, stdout)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "stable",
+		"web",
+	})
+	if code != 1 {
+		t.Fatalf("expected stable pre-allocation exit code 1, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stable stdout before fixture prepare, got:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "inspect --json") || !strings.Contains(stderr, "prepare") {
+		t.Fatalf("expected inspect and prepare guidance, got stderr:\n%s", stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "stable",
+	})
+	if code != 0 {
+		t.Fatalf("expected stable prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "stable",
+		"web",
+	})
+	if code != 0 {
+		t.Fatalf("expected stable port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", stablePort) {
+		t.Fatalf("expected stable fixture %d, got:\n%s", stablePort, stdout)
+	}
+}
+
+func TestPortResolvesRepoContextFromGitWorktree(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	worktree := filepath.Join(t.TempDir(), "demoapp-port-worktree")
+	cmd := exec.Command("git", "worktree", "add", "-b", "feature/port-worktree", worktree, "HEAD")
+	cmd.Dir = repo
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add failed: %v\n%s", err, output)
+	}
+
+	nestedCWD := filepath.Join(worktree, "nested", "child")
+	if err := os.MkdirAll(nestedCWD, 0o755); err != nil {
+		t.Fatalf("mkdir nested cwd: %v", err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", nestedCWD,
+	})
+	if code != 0 {
+		t.Fatalf("expected worktree prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	allocatedPort := preparedPort(t, worktree, "web")
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", nestedCWD,
+		"web",
+	})
+	if code != 0 {
+		t.Fatalf("expected worktree port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", allocatedPort) {
+		t.Fatalf("expected worktree assigned port on stdout, got:\n%s", stdout)
+	}
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on dynamic tcp port: %v", err)
+	}
+	defer listener.Close()
+
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("expected TCPAddr, got %T", listener.Addr())
+	}
+	return addr.Port
+}
+
+func rewriteDemoDefaultPort(t *testing.T, repo string, port int) {
+	t.Helper()
+
+	configPath := filepath.Join(repo, "devlane.yaml")
+	payload, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read adapter: %v", err)
+	}
+	updated := strings.Replace(string(payload), "default: 3000", fmt.Sprintf("default: %d", port), 1)
+	if updated == string(payload) {
+		t.Fatalf("expected to rewrite default port in:\n%s", payload)
+	}
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write adapter: %v", err)
+	}
+}
+
+func rewriteDemoStableFixture(t *testing.T, repo string, defaultPort, stablePort int) {
+	t.Helper()
+
+	configPath := filepath.Join(repo, "devlane.yaml")
+	payload, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read adapter: %v", err)
+	}
+	updated := strings.Replace(
+		string(payload),
+		"default: 3000\n    health_path: /health",
+		fmt.Sprintf("default: %d\n    stable_port: %d\n    health_path: /health", defaultPort, stablePort),
+		1,
+	)
+	if updated == string(payload) {
+		t.Fatalf("expected to rewrite stable fixture in:\n%s", payload)
+	}
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write adapter: %v", err)
+	}
+}
+
 func TestPrepareSanitizesSlashDelimitedPortEnvKeys(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 	mustWriteFile(t, filepath.Join(repo, "devlane.yaml"), `

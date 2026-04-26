@@ -6,9 +6,9 @@ This scaffold is intentionally phased.
 
 Current implementation note:
 
-- the shipped CLI is `init`, `inspect`, `prepare`, `up`, `down`, `status`, and `doctor`
+- the shipped CLI is `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, and `doctor`
 - host-catalog-backed `ready`, `ports`, sticky allocation, and host-port-aware `status` are already implemented
-- the remaining unscheduled operator surface is mostly `port`, `reassign`, `host *`, plus Phase 3 worktree lifecycle
+- the remaining unscheduled operator surface is mostly `reassign`, `host *`, plus Phase 3 worktree lifecycle
 
 ## Phase 1 — contract first
 

@@ -97,7 +97,7 @@ This is the field agents should check first. It is cheaper than iterating `ports
 
 For each of those, there are separate surfaces:
 
-- **Bindability right now:** use `devlane status` for the current checkout, or perform an OS-level probe yourself. A dedicated `devlane port <service> --probe` command is planned but not shipped yet.
+- **Bindability right now:** use `devlane status` for the current checkout, or `devlane port <service> --probe` when you need shell-friendly output plus an exit code.
 - **Is the lane running:** `devlane status` (runs `docker compose ps` for containerized; prints manifest summary for bare-metal).
 - **Health endpoints:** your own code, hitting `manifest.ports.<svc>.healthUrl`.
 
@@ -108,7 +108,7 @@ There are actually three different "is this fresh" questions tangled up in the m
 1. **Have all declared ports been allocated for this checkout's lane state?** → `ready`.
 2. **Is the catalog state still what the last successful publish wrote?** → fresh `inspect --json`. On-disk `.devlane/manifest.json` is a snapshot and can drift if another process has run `prepare` for the same checkout state or otherwise changed the live catalog inputs.
 3. **Are the repo-local generated outputs current right now?** → not represented as a separate manifest bit today; run `prepare` when generated files or `.devlane/compose.env` need to be refreshed.
-4. **Is the port actually bindable right now?** → `--probe`.
+4. **Is the port actually bindable right now?** → `devlane port <service> --probe`.
 
 Agents that care about freshness should re-run `inspect --json`. Agents that need current generated outputs should run `prepare`. Agents that want bindability certainty should probe. `ready` is the cheap top-level allocation check; useful, but it does not substitute for either of the other surfaces.
 
