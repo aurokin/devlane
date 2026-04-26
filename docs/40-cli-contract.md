@@ -15,10 +15,13 @@ The current CLI is:
 - `status`
 - `doctor`
 
+Host commands:
+
+- `host status`
+
 Not shipped:
 
 - `reassign`
-- `host status`
 - `host doctor`
 - `host gc`
 - `worktree create`
@@ -69,6 +72,8 @@ Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in 
   - Successful reads exit `0`. Non-zero is reserved for invocation, config, or subprocess errors.
 
 - `doctor` — read-only preflight for the current repo. It checks obvious prerequisites and adapter sanity for the current lane context: readable adapter/config, required external tools, and compose-file presence when compose is declared. It does not claim app health, process ownership, or runtime readiness.
+
+- `host status` — list every allocation in the host catalog, sorted by `(app, repoPath, service)`. Output columns: `app`, `mode`, `lane`, `service`, `port`, `repoPath`. Empty catalog prints `no allocations` and exits `0`. The read does not acquire the catalog lock, so it is safe to run during an in-flight `prepare`; the lock-then-rename write discipline guarantees the read sees either the pre-write or post-write file, never a partial one. Non-zero exit only on read or invocation failure.
 
 The bare-metal asymmetry is deliberate: with compose, the supervisor can answer whether a service is up. Without a supervisor, the best devlane can do is say whether the reserved port is bound.
 
