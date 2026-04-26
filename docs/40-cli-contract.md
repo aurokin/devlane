@@ -14,6 +14,7 @@ The current CLI is:
 - `down`
 - `status`
 - `doctor`
+- `reassign`
 
 Host commands:
 
@@ -21,7 +22,6 @@ Host commands:
 
 Not shipped:
 
-- `reassign`
 - `host doctor`
 - `host gc`
 - `worktree create`
@@ -74,6 +74,12 @@ Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in 
 - `doctor` — read-only preflight for the current repo. It checks obvious prerequisites and adapter sanity for the current lane context: readable adapter/config, required external tools, and compose-file presence when compose is declared. It does not claim app health, process ownership, or runtime readiness.
 
 - `host status` — list every allocation in the host catalog, sorted by `(app, repoPath, service)`. Output columns: `app`, `mode`, `lane`, `service`, `port`, `repoPath`. Empty catalog prints `no allocations` and exits `0`. The read does not acquire the catalog lock, so it is safe to run during an in-flight `prepare`; the lock-then-rename write discipline guarantees the read sees either the pre-write or post-write file, never a partial one. Non-zero exit only on read or invocation failure.
+
+- `reassign <service>` — move a single allocation onto a fresh port using the same sticky resolution rules as `prepare`. Mutation scope is the requested service only — every other catalog row is left untouched.
+  - Idempotent on a bindable port: when the current allocation's port is bindable, `reassign` exits 0 and writes nothing.
+  - `--force` always invokes the allocator. For dev lanes the current port is treated as held so the row is displaced onto a different bindable port; for stable lanes the fixture is reclaimed (so `--force` is effectively a no-op when the fixture is already held).
+  - `--lane <name>` selects the target row by lane name within the current adapter's `app`. Resolution scopes to repo context (no cross-app scanning); worktrees of the same app match because their `repoPath` values resolve under symlink evaluation. When more than one checkout in the same app shares the lane name, the resolver's tiebreak prefers the caller's own `repoPath` so an operator inside a worktree can target their local lane unambiguously. If no match wins the tiebreak, the command exits 1 and enumerates the colliding checkouts.
+  - All mutations go through the catalog `Mutate` primitive (lock-then-rename) so concurrent `prepare` and `reassign` invocations serialize correctly.
 
 The bare-metal asymmetry is deliberate: with compose, the supervisor can answer whether a service is up. Without a supervisor, the best devlane can do is say whether the reserved port is bound.
 

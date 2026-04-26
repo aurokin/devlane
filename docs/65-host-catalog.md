@@ -72,7 +72,7 @@ Each allocation answers "which port does this `(app, repoPath, service)` tuple o
 
 `repoPath` is the absolute Git worktree root for the checkout, not the adapter directory. For subtree adapters in monorepos, multiple adapters may share the same `repoPath` while still producing different manifests from different `configPath` values.
 
-The catalog is tool-owned. Humans and agents should not hand-edit it. Today `prepare` is the only shipped command that mutates it.
+The catalog is tool-owned. Humans and agents should not hand-edit it. Today `prepare` and `reassign` are the shipped commands that mutate it; both go through the same lock-then-rename discipline (`prepare` via its session orchestration, `reassign` via the `Mutate` callback primitive in the port-allocation package).
 
 ## Concurrency model
 
@@ -87,7 +87,7 @@ Devlane uses a lock-then-rename write discipline:
 5. `os.rename` the temp file over `catalog.json` (atomic on POSIX).
 6. Release the lock.
 
-Every code path that mutates the catalog uses this discipline. Today that means `prepare`. Readers such as `inspect` do not take the lock; they read `catalog.json` directly and accept that their view may be one write behind.
+Every code path that mutates the catalog uses this discipline. Today that means `prepare` and `reassign`. Readers such as `inspect` do not take the lock; they read `catalog.json` directly and accept that their view may be one write behind.
 
 The lock is OS-managed. If a process is killed mid-write, the lock releases automatically and the next writer reads the unmodified `catalog.json` (because the rename never happened).
 

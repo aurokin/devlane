@@ -92,6 +92,62 @@ func TestPrepareKeepsLocalStateWhenCatalogLockReleaseFailsAfterPublish(t *testin
 	assertCatalogAllocationsInternal(t, filepath.Join(sharedConfig, "devlane", "catalog.json"), 1)
 }
 
+func TestReassignSurfacesMutateFailureWithoutPartialWrite(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	sharedConfig := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", sharedConfig)
+
+	// Seed a real allocation so the reassign target exists.
+	if code, _, stderr := runCLIInternal(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+	}); code != 0 {
+		t.Fatalf("seed prepare failed: %d\nstderr:\n%s", code, stderr)
+	}
+
+	original := mutateCatalog
+	mutateCatalog = func(_ func(*portalloc.Snapshot) error) error {
+		return errors.New("mutate catalog: forced failure")
+	}
+	defer func() { mutateCatalog = original }()
+
+	code, _, stderr := runCLIInternal(t, []string{
+		"reassign",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--force",
+		"web",
+	})
+	if code != 1 {
+		t.Fatalf("expected reassign to surface mutate failure with exit 1, got %d\nstderr:\n%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "forced failure") {
+		t.Fatalf("expected forced mutate failure in stderr, got:\n%s", stderr)
+	}
+
+	// Catalog row must remain on its original port.
+	rows := readCatalogAllocationsInternal(t, filepath.Join(sharedConfig, "devlane", "catalog.json"))
+	if len(rows) != 1 || rows[0].Port != 3000 {
+		t.Fatalf("expected catalog row to stay on port 3000 after forced mutate failure, got %#v", rows)
+	}
+}
+
+func readCatalogAllocationsInternal(t *testing.T, path string) []portalloc.Allocation {
+	t.Helper()
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	var stored struct {
+		Allocations []portalloc.Allocation `json:"allocations"`
+	}
+	if err := json.Unmarshal(payload, &stored); err != nil {
+		t.Fatalf("decode catalog: %v", err)
+	}
+	return stored.Allocations
+}
+
 func runCLIInternal(t *testing.T, args []string) (int, string, string) {
 	t.Helper()
 

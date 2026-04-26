@@ -83,6 +83,10 @@ func (l *catalogLock) Close() error {
 	return nil
 }
 
+func (l *catalogLock) holderPID() int {
+	return os.Getpid()
+}
+
 func unlockCatalogFile(file *os.File) error {
 	return syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 }
