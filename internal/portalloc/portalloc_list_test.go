@@ -189,22 +189,33 @@ func TestListNeverObservesPartialWriteDuringConcurrentRename(t *testing.T) {
 	}
 	catalogPath := filepath.Join(catalogDir, "catalog.json")
 
-	publishCatalogAtomically(t, catalogDir, catalogPath, 1)
+	if err := publishCatalogAtomically(catalogDir, catalogPath, 1); err != nil {
+		t.Fatalf("seed catalog: %v", err)
+	}
 
 	deadline := time.Now().Add(500 * time.Millisecond)
 	var stop atomic.Bool
+	writerErr := make(chan error, 1)
 	writerDone := make(chan struct{})
 	go func() {
 		defer close(writerDone)
 		i := 1
 		for !stop.Load() {
-			publishCatalogAtomically(t, catalogDir, catalogPath, 1+(i%5))
+			if err := publishCatalogAtomically(catalogDir, catalogPath, 1+(i%5)); err != nil {
+				writerErr <- err
+				return
+			}
 			i++
 		}
 	}()
 	defer func() {
 		stop.Store(true)
 		<-writerDone
+		select {
+		case err := <-writerErr:
+			t.Fatalf("writer goroutine: %v", err)
+		default:
+		}
 	}()
 
 	reads := 0
@@ -223,9 +234,7 @@ func TestListNeverObservesPartialWriteDuringConcurrentRename(t *testing.T) {
 	}
 }
 
-func publishCatalogAtomically(t *testing.T, dir, finalPath string, rowCount int) {
-	t.Helper()
-
+func publishCatalogAtomically(dir, finalPath string, rowCount int) error {
 	rows := make([]map[string]any, 0, rowCount)
 	for i := 0; i < rowCount; i++ {
 		rows = append(rows, map[string]any{
@@ -244,24 +253,25 @@ func publishCatalogAtomically(t *testing.T, dir, finalPath string, rowCount int)
 		"allocations": rows,
 	})
 	if err != nil {
-		t.Fatalf("marshal catalog: %v", err)
+		return fmt.Errorf("marshal catalog: %w", err)
 	}
 	temp, err := os.CreateTemp(dir, "catalog-*.json")
 	if err != nil {
-		t.Fatalf("create temp catalog: %v", err)
+		return fmt.Errorf("create temp catalog: %w", err)
 	}
 	tempPath := temp.Name()
 	if _, err := temp.Write(payload); err != nil {
 		temp.Close()
 		os.Remove(tempPath)
-		t.Fatalf("write temp catalog: %v", err)
+		return fmt.Errorf("write temp catalog: %w", err)
 	}
 	if err := temp.Close(); err != nil {
 		os.Remove(tempPath)
-		t.Fatalf("close temp catalog: %v", err)
+		return fmt.Errorf("close temp catalog: %w", err)
 	}
 	if err := os.Rename(tempPath, finalPath); err != nil {
 		os.Remove(tempPath)
-		t.Fatalf("rename temp catalog: %v", err)
+		return fmt.Errorf("rename temp catalog: %w", err)
 	}
+	return nil
 }
