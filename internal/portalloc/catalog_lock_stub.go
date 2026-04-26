@@ -19,3 +19,7 @@ func acquireCatalogLock(timeout time.Duration) (*catalogLock, error) {
 func (l *catalogLock) Close() error {
 	return nil
 }
+
+func (l *catalogLock) holderPID() int {
+	return 0
+}

@@ -69,6 +69,8 @@ func Run(args []string) int {
 		return runDoctor(args[1:])
 	case "host":
 		return runHost(args[1:])
+	case "reassign":
+		return runReassign(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
 		printUsage()
@@ -742,5 +744,5 @@ func exitError(err error) int {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|port|up|down|status|doctor|host> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|port|up|down|status|doctor|host|reassign> [flags]")
 }

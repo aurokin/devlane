@@ -20,11 +20,16 @@ import (
 const catalogSchema = 1
 
 const (
-	catalogLockTimeout    = 30 * time.Second
 	catalogLockRetryDelay = 100 * time.Millisecond
 	catalogLockFileMode   = 0o644
 	catalogLockWritePerms = 0o755
 )
+
+// catalogLockTimeout is the bound on how long Prepare and Mutate will wait for
+// the catalog lock before failing. Declared as a var so tests in this package
+// can shrink it for contention-timeout assertions; production code never
+// mutates it.
+var catalogLockTimeout = 30 * time.Second
 
 type Lane struct {
 	App      string
@@ -77,6 +82,14 @@ type PrepareSession struct {
 	ready     bool
 	published bool
 	finished  bool
+}
+
+// Snapshot is the mutable catalog view passed to Mutate callbacks. Callbacks
+// may add, remove, or modify entries in Allocations directly. The slice is the
+// authoritative input to the publish step on success; on callback error or
+// panic the on-disk catalog is left unchanged.
+type Snapshot struct {
+	Allocations []Allocation
 }
 
 type catalogLock struct {
@@ -171,6 +184,71 @@ func Prepare(adapter *config.AdapterConfig, lane Lane) (map[string]State, bool, 
 	}
 
 	return session.States(), session.Ready(), nil
+}
+
+// Mutate runs fn against a mutable catalog snapshot under the catalog lock and
+// atomically publishes the result on success. The lock-then-rename discipline
+// is the same one Prepare uses: acquire the catalog lock with the standard
+// 30-second timeout, load the catalog, hand the snapshot to fn, write a temp
+// file, rename it over catalog.json, and release the lock.
+//
+// Callback errors or panics short-circuit the publish step — the on-disk
+// catalog remains unchanged. Lock-release errors are wrapped with diagnostic
+// context that includes the lock-holder PID and the attempted action so
+// operators can identify which Mutate call left the lock dangling. When both
+// the publish and the lock release fail, the publish error is returned and the
+// lock-release error is dropped on the floor.
+func Mutate(fn func(*Snapshot) error) (retErr error) {
+	if fn == nil {
+		return errors.New("portalloc.Mutate requires a non-nil callback")
+	}
+
+	lock, err := acquireCatalogLock(catalogLockTimeout)
+	if err != nil {
+		return err
+	}
+
+	holderPID := lock.holderPID()
+	defer func() {
+		if closeErr := lock.Close(); closeErr != nil {
+			wrapped := fmt.Errorf("release catalog lock after Mutate (held by pid %d): %w", holderPID, closeErr)
+			if retErr == nil {
+				retErr = wrapped
+			}
+		}
+	}()
+
+	cat, err := loadCatalog()
+	if err != nil {
+		return err
+	}
+
+	snap := &Snapshot{Allocations: cat.Allocations}
+
+	if err := runMutateCallback(fn, snap); err != nil {
+		return err
+	}
+
+	cat.Allocations = snap.Allocations
+	if cat.Allocations == nil {
+		cat.Allocations = []Allocation{}
+	}
+
+	return saveCatalog(cat)
+}
+
+func runMutateCallback(fn func(*Snapshot) error, snap *Snapshot) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if rerr, ok := r.(error); ok {
+				err = fmt.Errorf("portalloc.Mutate callback panicked: %w", rerr)
+				return
+			}
+			err = fmt.Errorf("portalloc.Mutate callback panicked: %v", r)
+		}
+	}()
+
+	return fn(snap)
 }
 
 func (s *PrepareSession) States() map[string]State {
