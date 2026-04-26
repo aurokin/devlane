@@ -278,7 +278,8 @@ func portFlagNeedsValue(arg string) bool {
 }
 
 func assignedPort(adapter *config.AdapterConfig, inputs manifest.Inputs, service string) (portalloc.Allocation, error) {
-	if !adapterDeclaresPort(adapter, service) {
+	portConfig, ok := adapterPort(adapter, service)
+	if !ok {
 		return portalloc.Allocation{}, fmt.Errorf("service %q is not declared in the adapter", service)
 	}
 
@@ -289,20 +290,34 @@ func assignedPort(adapter *config.AdapterConfig, inputs manifest.Inputs, service
 
 	for _, row := range rows {
 		if row.App == adapter.App && row.Service == service && sameCatalogRepoPath(row.RepoPath, inputs.RepoRoot) {
+			if inputs.Stable && row.Port != stableFixture(portConfig) {
+				return portalloc.Allocation{}, missingAssignedPortError(service)
+			}
 			return row, nil
 		}
 	}
 
-	return portalloc.Allocation{}, fmt.Errorf("no assigned port for service %q; run `devlane inspect --json` to see the current provisional candidate or `devlane prepare` to commit an allocation", service)
+	return portalloc.Allocation{}, missingAssignedPortError(service)
 }
 
-func adapterDeclaresPort(adapter *config.AdapterConfig, service string) bool {
+func adapterPort(adapter *config.AdapterConfig, service string) (config.PortConfig, bool) {
 	for _, portConfig := range adapter.Ports {
 		if portConfig.Name == service {
-			return true
+			return portConfig, true
 		}
 	}
-	return false
+	return config.PortConfig{}, false
+}
+
+func stableFixture(portConfig config.PortConfig) int {
+	if portConfig.StablePort != nil {
+		return *portConfig.StablePort
+	}
+	return portConfig.Default
+}
+
+func missingAssignedPortError(service string) error {
+	return fmt.Errorf("no assigned port for service %q; run `devlane inspect --json` to see the current provisional candidate or `devlane prepare` to commit an allocation", service)
 }
 
 func sameCatalogRepoPath(left, right string) bool {

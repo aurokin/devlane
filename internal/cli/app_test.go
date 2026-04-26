@@ -344,6 +344,81 @@ func TestPortFailsBeforeAllocation(t *testing.T) {
 	}
 }
 
+func TestPortStableModeDoesNotReuseDevOnlyAllocation(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	devPort := freeTCPPort(t)
+	stablePort := freeTCPPort(t)
+	if stablePort == devPort {
+		stablePort = freeTCPPort(t)
+	}
+	rewriteDemoStableFixture(t, repo, devPort, stablePort)
+
+	code, stdout, stderr := runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "dev",
+	})
+	if code != 0 {
+		t.Fatalf("expected dev prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "dev",
+		"web",
+	})
+	if code != 0 {
+		t.Fatalf("expected dev port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", devPort) {
+		t.Fatalf("expected dev port %d, got:\n%s", devPort, stdout)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "stable",
+		"web",
+	})
+	if code != 1 {
+		t.Fatalf("expected stable pre-allocation exit code 1, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stable stdout before fixture prepare, got:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "inspect --json") || !strings.Contains(stderr, "prepare") {
+		t.Fatalf("expected inspect and prepare guidance, got stderr:\n%s", stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"prepare",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "stable",
+	})
+	if code != 0 {
+		t.Fatalf("expected stable prepare exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{
+		"port",
+		"--cwd", repo,
+		"--config", filepath.Join(repo, "devlane.yaml"),
+		"--mode", "stable",
+		"web",
+	})
+	if code != 0 {
+		t.Fatalf("expected stable port exit code 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if stdout != fmt.Sprintf("%d\n", stablePort) {
+		t.Fatalf("expected stable fixture %d, got:\n%s", stablePort, stdout)
+	}
+}
+
 func TestPortResolvesRepoContextFromGitWorktree(t *testing.T) {
 	repo := testutil.InitDemoRepo(t)
 	worktree := filepath.Join(t.TempDir(), "demoapp-port-worktree")
@@ -407,6 +482,28 @@ func rewriteDemoDefaultPort(t *testing.T, repo string, port int) {
 	updated := strings.Replace(string(payload), "default: 3000", fmt.Sprintf("default: %d", port), 1)
 	if updated == string(payload) {
 		t.Fatalf("expected to rewrite default port in:\n%s", payload)
+	}
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("write adapter: %v", err)
+	}
+}
+
+func rewriteDemoStableFixture(t *testing.T, repo string, defaultPort, stablePort int) {
+	t.Helper()
+
+	configPath := filepath.Join(repo, "devlane.yaml")
+	payload, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read adapter: %v", err)
+	}
+	updated := strings.Replace(
+		string(payload),
+		"default: 3000\n    health_path: /health",
+		fmt.Sprintf("default: %d\n    stable_port: %d\n    health_path: /health", defaultPort, stablePort),
+		1,
+	)
+	if updated == string(payload) {
+		t.Fatalf("expected to rewrite stable fixture in:\n%s", payload)
 	}
 	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
 		t.Fatalf("write adapter: %v", err)
