@@ -219,6 +219,33 @@ func TestHostGcRemovesDeadRowThatAlsoDuplicateClaims(t *testing.T) {
 	}
 }
 
+func TestHostGcDoesNotRemoveUnreachableRepoPath(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	// The worktree root is absent AND its parent is also absent (e.g. an unmounted
+	// volume), so the absence cannot be trusted as a deletion. The row surfaces as
+	// bad-adapter, not the removable missing-repoPath, so gc must keep it — never
+	// delete a live allocation whose volume was merely offline.
+	repoPath := filepath.Join(t.TempDir(), "missing-parent", "web")
+	seedCatalog(t, configHome, []hostStatusSeedRow{
+		{App: "agentchat", Lane: "dev", Mode: "dev", Service: "web", Port: 3100, RepoPath: repoPath},
+	})
+
+	code, stdout, stderr := runCLI(t, []string{"host", "gc", "--yes"})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "no removable drift") {
+		t.Fatalf("expected \"no removable drift\" (unreachable row is not removable), got:\n%s", stdout)
+	}
+
+	rows := readCatalogRows(t, configHome)
+	if len(rows) != 1 {
+		t.Fatalf("expected the unreachable row to remain, got %d: %#v", len(rows), rows)
+	}
+}
+
 func TestHostGcRejectsPositionalArgs(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)

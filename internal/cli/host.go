@@ -170,8 +170,13 @@ func probeLabel(port int) string {
 func loadRepoAdapters(repoPath string) (drift.RepoAdapters, error) {
 	info, err := os.Stat(repoPath)
 	if err != nil {
-		// A missing worktree root surfaces os.ErrNotExist -> missing-repoPath;
-		// any other stat error is non-NotExist -> bad-adapter.
+		if errors.Is(err, os.ErrNotExist) {
+			// An absent worktree root is only safely removable when we are
+			// confident it was deleted, not merely unreachable.
+			return drift.RepoAdapters{}, classifyAbsentRepoPath(repoPath, err)
+		}
+		// Any other stat error (e.g. EACCES) is uncertainty, not absence ->
+		// bad-adapter, so it is surfaced but never auto-removed.
 		return drift.RepoAdapters{}, err
 	}
 	if !info.IsDir() {
@@ -181,6 +186,36 @@ func loadRepoAdapters(repoPath string) (drift.RepoAdapters, error) {
 	result := drift.RepoAdapters{Services: map[string]map[string]struct{}{}}
 	walkRepoAdapters(repoPath, &result)
 	return result, nil
+}
+
+// classifyAbsentRepoPath decides whether an absent worktree root is a confident
+// deletion (removable missing-repoPath) or an absence we cannot trust (surfaced,
+// non-removable bad-adapter). A worktree deleted in place leaves its parent
+// directory behind, so a present, readable parent is treated as the signature of
+// a genuine removal and the row is classified missing-repoPath by returning the
+// os.ErrNotExist. If the parent is itself gone or unreadable, the absence is
+// ancestral — a deleted parent tree or an unmounted volume whose whole mountpoint
+// vanished (as on macOS /Volumes eject) — so a non-ErrNotExist error is returned
+// instead, routing the row to the non-removable bad-adapter bucket.
+//
+// This is a partial guard, not airtight, and deliberately so. A present parent
+// is not proof: an unmounted volume can leave an empty mountpoint directory
+// behind that is byte-for-byte indistinguishable from a deleted worktree's
+// parent, so an offline volume whose mountpoint persists is still classified
+// missing-repoPath. Reliably telling the two apart is not possible from the local
+// filesystem (st_dev, mountinfo, and statfs all report only what is mounted now),
+// so we do not attempt it. Requiring a NON-empty parent was considered and
+// rejected: the sole worktree under a parent is a legitimate deletion that leaves
+// an EMPTY parent (as every t.TempDir()/"gone" test fixture models), so emptiness
+// would mis-protect gc's primary case while still leaking on any parked mountpoint
+// that retains a stray file. The residual offline-volume exposure under unattended
+// `host gc --yes` is a documented, accepted limitation (see docs/40-cli-contract.md).
+func classifyAbsentRepoPath(repoPath string, statErr error) error {
+	parent := filepath.Dir(repoPath)
+	if info, err := os.Stat(parent); err == nil && info.IsDir() {
+		return statErr
+	}
+	return fmt.Errorf("repo path %s is absent and its parent %s is unavailable; treating as unreachable (possible unmounted volume), not removable", repoPath, parent)
 }
 
 func walkRepoAdapters(dir string, result *drift.RepoAdapters) {

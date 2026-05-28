@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+func TestIsTerminalRejectsNonTerminalCharDevicesAndNil(t *testing.T) {
+	// /dev/null is a character device, so an os.ModeCharDevice-based check would
+	// wrongly call it interactive. term.IsTerminal must report it non-interactive
+	// so callers reading from it take their non-interactive path.
+	devnull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer devnull.Close()
+
+	if IsTerminal(devnull) {
+		t.Fatalf("%s must not be classified as an interactive terminal", os.DevNull)
+	}
+	if IsTerminal(nil) {
+		t.Fatalf("nil file must not be classified as an interactive terminal")
+	}
+
+	// A regular file is also not a terminal.
+	regular, err := os.CreateTemp(t.TempDir(), "regular")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer regular.Close()
+	if IsTerminal(regular) {
+		t.Fatalf("a regular file must not be classified as an interactive terminal")
+	}
+}
+
 func TestResolveAdapterPathRejectsSymlinkEscapeForExistingPath(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
