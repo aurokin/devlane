@@ -19,10 +19,10 @@ The current CLI is:
 Host commands:
 
 - `host status`
+- `host doctor`
 
 Not shipped:
 
-- `host doctor`
 - `host gc`
 - `worktree create`
 - `worktree remove`
@@ -74,6 +74,8 @@ Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in 
 - `doctor` — read-only preflight for the current repo. It checks obvious prerequisites and adapter sanity for the current lane context: readable adapter/config, required external tools, and compose-file presence when compose is declared. It does not claim app health, process ownership, or runtime readiness.
 
 - `host status` — list every allocation in the host catalog, sorted by `(app, repoPath, service)`. Output columns: `app`, `mode`, `lane`, `service`, `port`, `repoPath`. Empty catalog prints `no allocations` and exits `0`. The read does not acquire the catalog lock, so it is safe to run during an in-flight `prepare`; the lock-then-rename write discipline guarantees the read sees either the pre-write or post-write file, never a partial one. Non-zero exit only on read or invocation failure.
+
+- `host doctor` — read-only audit of the host catalog. A row's `repoPath` is the Git worktree root, which in a monorepo may host several subtree adapters, so `doctor` discovers every `devlane.yaml` under the worktree root — skipping the same trees as `init` (`.git`, `node_modules`, build output, etc.) and stopping at nested Git roots, since a nested checkout is a different worktree with its own rows — and matches each row to the adapter that declares its `app`. Discovery is unbounded in depth because `prepare` records `repoPath` as the worktree root regardless of how deep the adapter lives. It reports drift in five categories: `missing-repoPath` (the worktree root no longer exists), `missing-service` (the service is no longer declared by the adapter that declares the row's app), `app-mismatch` (no adapter under the worktree declares the row's app any more), `duplicate-claim` (more than one row claims the same port), and `bad-adapter` (a discovered adapter failed to parse or validate — or a directory could not be read — and the row's app is otherwise unaccounted for). Discovery is conservative about uncertainty: an unreadable directory or unparseable adapter never demotes a row into a removable category, so a transient failure cannot make a healthy allocation look safe to delete. Loader errors are surfaced as classified findings, never panics; a single malformed subtree adapter never hides a healthy sibling. Each reported allocation's port is probed for `bound` / `free` context; probing is informational only and never creates a finding, so a bound-but-singly-claimed row is not flagged on its own. Like `host status`, the read does not acquire the catalog lock and never mutates the catalog. A clean catalog prints `no drift detected` and exits `0`; any finding exits `1`. `missing-repoPath`, `missing-service`, and `app-mismatch` are the categories `host gc` treats as safe to remove; `duplicate-claim` and `bad-adapter` are surfaced for the operator but require a human decision.
 
 - `reassign <service>` — move a single allocation onto a fresh port using the same sticky resolution rules as `prepare`. Mutation scope is the requested service only — every other catalog row is left untouched.
   - Idempotent on a bindable port: when the current allocation's port is bindable, `reassign` exits 0 and writes nothing.
