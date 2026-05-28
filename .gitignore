@@ -1,3 +1,4 @@
 .devlane/
 .coverprofile
 bin/
+.claude/scheduled_tasks.lock
