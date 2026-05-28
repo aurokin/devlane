@@ -362,7 +362,7 @@ func selectScanCandidates(cwd string, opts Options, stdin, stdout *os.File) ([]C
 		if opts.All {
 			return candidates, nil
 		}
-		if !isInteractive(stdin) || opts.Yes {
+		if !util.IsTerminal(stdin) || opts.Yes {
 			return nil, errors.New("multiple candidates found; rerun with --all or --app <path>")
 		}
 
@@ -621,7 +621,7 @@ func planWrite(target string, payload []byte, messages []string, opts Options) (
 }
 
 func confirmWrites(plans []writePlan, opts Options, stdin, stdout *os.File) error {
-	if opts.Yes || opts.All || !isInteractive(stdin) {
+	if opts.Yes || opts.All || !util.IsTerminal(stdin) {
 		return nil
 	}
 
@@ -837,16 +837,4 @@ func displayPath(cwd, target string) string {
 		return target
 	}
 	return relative
-}
-
-func isInteractive(stdin *os.File) bool {
-	if stdin == nil {
-		return false
-	}
-
-	info, err := stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
 }

@@ -7,26 +7,18 @@ import (
 	"os"
 	"strings"
 
-	"golang.org/x/term"
-
 	"github.com/auro/devlane/internal/drift"
 	"github.com/auro/devlane/internal/portalloc"
+	"github.com/auro/devlane/internal/util"
 )
 
-// stdinIsInteractive reports whether the given stream is an interactive
-// terminal. It uses term.IsTerminal (an actual termios query) rather than the
-// os.ModeCharDevice bit, because non-terminal character devices such as
-// /dev/null and /dev/zero also set that bit: an unattended `host gc < /dev/null`
-// must hit the documented refusal path, not the prompt path, and must never
-// block reading from a non-terminal device. It is a package variable so internal
-// tests can force the prompt path, which is otherwise unreachable under the
-// pipe-based CLI test harness.
-var stdinIsInteractive = func(f *os.File) bool {
-	if f == nil {
-		return false
-	}
-	return term.IsTerminal(int(f.Fd()))
-}
+// stdinIsInteractive reports whether stdin is an interactive terminal. It is a
+// package variable wrapping util.IsTerminal so internal tests can force the
+// confirmation prompt path, which is otherwise unreachable under the pipe-based
+// CLI test harness (a pipe is never a terminal). Using util.IsTerminal (a
+// termios query) rather than os.ModeCharDevice ensures `host gc < /dev/null`
+// takes the documented refusal path instead of the prompt path.
+var stdinIsInteractive = util.IsTerminal
 
 // runHostGc removes catalog rows that `host doctor` would classify as safely
 // removable (missing-repoPath, missing-service, app-mismatch). Findings that

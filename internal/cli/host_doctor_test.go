@@ -456,6 +456,29 @@ func TestHostDoctorAdapterPathIsDirectoryReportedAsBadAdapter(t *testing.T) {
 	}
 }
 
+func TestHostDoctorUnreachableRepoPathReportedAsBadAdapter(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	// The worktree root is absent AND its parent is also absent — the signature of
+	// an unmounted/unreachable volume rather than a deletion. doctor must surface
+	// it as the non-removable bad-adapter, never the removable missing-repoPath, so
+	// a transiently-offline volume can never look safe for host gc to delete.
+	repoPath := filepath.Join(t.TempDir(), "missing-parent", "web")
+	seedCatalog(t, configHome, []hostStatusSeedRow{
+		{App: "agentchat", Lane: "dev", Mode: "dev", Service: "web", Port: 3100, RepoPath: repoPath},
+	})
+
+	code, stdout, _ := runCLI(t, []string{"host", "doctor"})
+	if code != 1 {
+		t.Fatalf("expected exit 1, got %d\n%s", code, stdout)
+	}
+	assertContainsAll(t, stdout, "bad-adapter", "agentchat", "unreachable")
+	if strings.Contains(stdout, "missing-repoPath") {
+		t.Fatalf("an unreachable repoPath must not be reported as removable missing-repoPath:\n%s", stdout)
+	}
+}
+
 func TestHostDoctorProbesAndReportsBoundFree(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)

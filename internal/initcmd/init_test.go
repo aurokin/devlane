@@ -330,6 +330,38 @@ func TestExecuteTemplateIgnoresOverrideOnlyComposeFiles(t *testing.T) {
 	}
 }
 
+func TestExecuteTreatsDevNullStdinAsNonInteractive(t *testing.T) {
+	// /dev/null is a character device; before the term.IsTerminal fix it was
+	// misclassified as interactive, so a single-candidate `devlane init` reading
+	// from it tried to prompt, hit EOF, and failed with "read confirmation: EOF".
+	// It must instead take the non-interactive path and scaffold without asking.
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "package.json"), "{}\n")
+
+	devnull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer devnull.Close()
+	devnullOut, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("open %s for write: %v", os.DevNull, err)
+	}
+	defer devnullOut.Close()
+
+	if _, err := initcmd.Execute(initcmd.Options{
+		CWD:    root,
+		Stdin:  devnull,
+		Stdout: devnullOut,
+	}); err != nil {
+		t.Fatalf("Execute with /dev/null stdin must not fail on the confirm path: %v", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(root, "devlane.yaml")); statErr != nil {
+		t.Fatalf("expected devlane.yaml scaffolded for the single candidate: %v", statErr)
+	}
+}
+
 func TestExecuteTemplateWithoutAppSelectsDetectedDescendantRoot(t *testing.T) {
 	root := t.TempDir()
 	app := filepath.Join(root, "apps", "web")

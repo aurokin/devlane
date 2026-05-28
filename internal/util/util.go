@@ -8,9 +8,23 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 var bracePatternRE = regexp.MustCompile(`\{([a-z_]+)\}`)
+
+// IsTerminal reports whether f is an interactive terminal. It performs an actual
+// termios query rather than testing the os.ModeCharDevice bit, which is also set
+// for non-terminal character devices such as /dev/null and /dev/zero — those
+// must not be treated as interactive, so a command reading from them takes its
+// non-interactive path instead of blocking on or mishandling a prompt.
+func IsTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
 
 func Slugify(value string, allowUnderscore bool) string {
 	text := strings.ToLower(strings.TrimSpace(value))
