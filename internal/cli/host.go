@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,8 @@ func runHost(args []string) int {
 		return runHostStatus(args[1:])
 	case "doctor":
 		return runHostDoctor(args[1:])
+	case "gc":
+		return runHostGc(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown host subcommand %q\n", args[0])
 		printHostUsage()
@@ -34,7 +37,7 @@ func runHost(args []string) int {
 }
 
 func printHostUsage() {
-	fmt.Fprintln(os.Stderr, "usage: devlane host <status|doctor> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: devlane host <status|doctor|gc> [flags]")
 }
 
 func runHostStatus(args []string) int {
@@ -108,24 +111,43 @@ func runHostDoctor(args []string) int {
 		return 0
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "CATEGORY\tAPP\tMODE\tLANE\tSERVICE\tPORT\tPROBE\tREPO PATH\tDETAIL")
-	for _, f := range findings {
-		a := f.Allocation
-		// Probing is context only: it never creates or suppresses a finding, so
-		// a bound-but-singly-claimed row is reported here only when it already
-		// drifted for another reason.
-		probe := "free"
-		if portalloc.Probe(a.Port) != nil {
-			probe = "bound"
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
-			f.Category, a.App, a.Mode, a.Lane, a.Service, a.Port, probe, a.RepoPath, f.Detail)
-	}
-	if err := w.Flush(); err != nil {
+	if err := writeFindingTable(os.Stdout, findings); err != nil {
 		return exitError(err)
 	}
 	return 1
+}
+
+// findingTableHeader is the shared column header for the drift finding table
+// rendered by both `host doctor` and `host gc`. The fixed leading columns
+// (through PROBE) keep a stable position so output remains parseable.
+const findingTableHeader = "CATEGORY\tAPP\tMODE\tLANE\tSERVICE\tPORT\tPROBE\tREPO PATH\tDETAIL"
+
+// writeFindingTable renders findings as a tab-aligned table to out, sharing one
+// layout between doctor and gc so both render findings identically.
+func writeFindingTable(out io.Writer, findings []drift.Finding) error {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, findingTableHeader)
+	for _, f := range findings {
+		writeFindingRow(w, f)
+	}
+	return w.Flush()
+}
+
+func writeFindingRow(w io.Writer, f drift.Finding) {
+	a := f.Allocation
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
+		f.Category, a.App, a.Mode, a.Lane, a.Service, a.Port, probeLabel(a.Port), a.RepoPath, f.Detail)
+}
+
+// probeLabel reports whether a finding's port is currently bound. Probing is
+// context only: it never creates or suppresses a finding, so a
+// bound-but-singly-claimed row is shown here only when it already drifted for
+// another reason.
+func probeLabel(port int) string {
+	if portalloc.Probe(port) != nil {
+		return "bound"
+	}
+	return "free"
 }
 
 // loadRepoAdapters is the drift module's filesystem boundary for host doctor. A
