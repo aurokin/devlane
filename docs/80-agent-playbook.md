@@ -111,11 +111,11 @@ A stable-fixture collision error names the holder and, when the conflict is reco
 - **stable vs offline dev lane**: run the printed `devlane reassign --lane <lane> --force --cwd <checkout> <service>` then `devlane prepare`. The recipe's `--cwd` already points at the offending checkout.
 - **stable vs bound dev lane**: stop the conflicting lane first (the error tells you where — `devlane down` in its checkout, or stop the bare-metal process), then run the printed `reassign` + `prepare`. Do not kill foreign processes the error does not attribute to a lane.
 
-## Worktrees today
+## Worktrees
 
-`devlane` does not ship worktree lifecycle commands yet. Use ordinary `git worktree` flows when needed, then run `inspect` / `prepare` inside the resulting checkout.
+`devlane worktree create <lane>` adds a sibling checkout on a new branch, copies the adapter's `worktree.seed` paths into it, and runs `prepare` so the new lane's ports are registered before you start anything. `devlane worktree remove <lane>` retires that checkout and cleans up only its catalog rows. Both require the adapter to live at the Git worktree root; for a subtree adapter in a monorepo they fail clearly and you fall back to ordinary `git worktree` flows plus `prepare` in the resulting checkout.
 
-If a repo wants future worktree automation, `worktree.seed` is the place to declare which credentials or local env files should move with a new worktree. No shipped CLI command consumes that field today.
+`worktree.seed` is where a repo declares which credentials or local env files should move into a new worktree. Entries that are also generated outputs are skipped (prepare renders them); missing sources warn and continue. If `create` fails after the checkout exists, it leaves the checkout in place and prints the recovery step rather than auto-removing your work.
 
 ## `up` behavior by adapter shape
 

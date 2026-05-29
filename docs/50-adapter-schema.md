@@ -177,7 +177,7 @@ Merged with the host-wide `reserved` in `os.UserConfigDir()/devlane/config.yaml`
 
 ### `worktree`
 
-Optional. Reserved for future worktree lifecycle automation; no shipped CLI command consumes it today.
+Optional. Consumed by `devlane worktree create`, which copies these paths into a new checkout before running `prepare`.
 
 ```yaml
 worktree:
