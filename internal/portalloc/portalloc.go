@@ -449,13 +449,19 @@ func choosePort(portConfig config.PortConfig, lane Lane, cfg hostConfig, reserve
 func chooseStablePort(portConfig config.PortConfig, reserved map[int]struct{}, held, claimed map[int]Allocation) (int, error) {
 	fixture := stablePort(portConfig)
 	ok, err := candidateAvailable(fixture, reserved, held, claimed)
+	if err == nil && ok {
+		return fixture, nil
+	}
 	if err != nil {
+		// The fixture is not reserved and unclaimed in the catalog, but the OS
+		// refused the bind. Preserve the concrete probe cause (address already
+		// in use, permission denied on a privileged port, …) rather than
+		// guessing a catalog-collision remedy that would not apply.
 		return 0, fmt.Errorf("stable port %d for service %q is unavailable: %w", fixture, portConfig.Name, err)
 	}
-	if !ok {
-		return 0, fmt.Errorf("stable port %d for service %q is unavailable", fixture, portConfig.Name)
-	}
-	return fixture, nil
+	owner, owned := collisionOwner(fixture, held, claimed)
+	_, isReserved := reserved[fixture]
+	return 0, stableCollisionError(fixture, portConfig.Name, owner, owned, isReserved)
 }
 
 func candidateAvailable(port int, reserved map[int]struct{}, held, claimed map[int]Allocation) (bool, error) {
