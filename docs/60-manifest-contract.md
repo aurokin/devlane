@@ -1,5 +1,7 @@
 # Manifest contract
 
+> **Reference** · Read this when you're consuming the manifest from an agent or wiring tooling to it. Onward: `80-agent-playbook.md` for how agents drive the tool, `40-cli-contract.md` for the commands that produce it.
+
 The manifest is the shared language between humans, agents, wrappers, and automation.
 
 This document describes the **current** manifest surface. The shipped shape includes top-level `ready` plus `ports.<service> = {port, allocated, healthUrl}`.

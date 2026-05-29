@@ -1,5 +1,7 @@
 # Host catalog
 
+> **Reference** · Read this when you're working on port allocation, the catalog, or drift (`host *`, `reassign`, `worktree remove`). Onward: `40-cli-contract.md` for the command behavior.
+
 The host catalog is the single source of truth for what `devlane`-managed apps exist on this machine, which lanes are registered, and which ports each lane's services are bound to.
 
 It sits alongside per-repo manifests, not inside them. The manifest answers "what is this lane?" The catalog answers "what is this host running?"
@@ -72,7 +74,7 @@ Each allocation answers "which port does this `(app, repoPath, service)` tuple o
 
 `repoPath` is the absolute Git worktree root for the checkout, not the adapter directory. For subtree adapters in monorepos, multiple adapters may share the same `repoPath` while still producing different manifests from different `configPath` values.
 
-The catalog is tool-owned. Humans and agents should not hand-edit it. Today `prepare` and `reassign` are the shipped commands that mutate it; both go through the same lock-then-rename discipline (`prepare` via its session orchestration, `reassign` via the `Mutate` callback primitive in the port-allocation package).
+The catalog is tool-owned. Humans and agents should not hand-edit it. Four commands mutate it — `prepare`, `reassign`, `worktree remove` (scoped cleanup of a retired checkout's rows), and `host gc` (drift cleanup) — and all go through the same lock-then-rename discipline (`prepare` via its session orchestration, the others via the `Mutate` callback primitive in the port-allocation package).
 
 ## Concurrency model
 
@@ -87,7 +89,7 @@ Devlane uses a lock-then-rename write discipline:
 5. `os.rename` the temp file over `catalog.json` (atomic on POSIX).
 6. Release the lock.
 
-Every code path that mutates the catalog uses this discipline. Today that means `prepare` and `reassign`. Readers such as `inspect` do not take the lock; they read `catalog.json` directly and accept that their view may be one write behind.
+Every code path that mutates the catalog uses this discipline: `prepare`, `reassign`, `worktree remove`, and `host gc`. Readers such as `inspect`, `host status`, and `host doctor` do not take the lock; they read `catalog.json` directly and accept that their view may be one write behind.
 
 The lock is OS-managed. If a process is killed mid-write, the lock releases automatically and the next writer reads the unmodified `catalog.json` (because the rename never happened).
 
@@ -243,6 +245,28 @@ The catalog is per-user. Two users on the same machine have independent catalogs
 Port collisions between users on the same host are still possible at the OS level. The live probe handles these the same way it handles any other external process.
 
 The catalog is not portable across machines. Allocations are a function of local host state.
+
+## Drift model (`host doctor` and `host gc`)
+
+Catalog rows can fall out of sync with the adapters they point at — a worktree gets deleted, an adapter drops a service, a port ends up claimed twice. `host doctor` audits the catalog for this drift (read-only) and `host gc` removes the rows that are provably safe to delete. Both share one detector, so they can never disagree about what is removable.
+
+A row's `repoPath` is the Git worktree root, which in a monorepo may host several subtree adapters. Detection discovers every `devlane.yaml` under that root (skipping `.git`, `node_modules`, build output, and stopping at nested Git roots) and matches each row to the adapter that declares the row's `app`.
+
+Drift is classified into five categories:
+
+| Category | Meaning | `host gc` |
+|----------|---------|-----------|
+| `missing-repoPath` | the worktree root no longer exists (its parent still does, so the absence reads as an in-place deletion) | removable |
+| `missing-service` | the adapter that declares the row's `app` no longer declares the row's service | removable |
+| `app-mismatch` | no adapter under the worktree declares the row's `app` any more | removable |
+| `duplicate-claim` | more than one row claims the same host port | surfaced only |
+| `bad-adapter` | a discovered adapter failed to parse/validate, a directory was unreadable, or the worktree root is absent while its parent is *also* gone (e.g. an unmounted volume) | surfaced only |
+
+The first three are removable because the row's target is provably gone. `duplicate-claim` and `bad-adapter` are surfaced for the operator but never auto-removed: each needs a human to decide which claimant or adapter is authoritative.
+
+Detection is conservative about uncertainty — an unreadable directory, an unparseable adapter, or a worktree whose own parent is missing (so the absence might be an offline volume rather than a deletion) is classified `bad-adapter`, never demoted into a removable category. A transient failure can never make a healthy allocation look safe to delete.
+
+`host gc` re-runs detection under the catalog lock and removes a row only if it is *still* removable at that moment and was shown to and confirmed by the operator, so a row repaired between the preview and the write is left alone. See `40-cli-contract.md` for the full `host doctor` / `host gc` command behavior, gating, and the offline-volume limitation.
 
 ## Relationship to the manifest
 

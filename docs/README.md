@@ -1,25 +1,26 @@
 # docs index
 
-This docs set is organized for progressive disclosure. Read only as deep as you need.
+This docs set is organized for progressive disclosure. Each doc carries a one-line **tier + "read this when"** header; open only as deep as your task needs.
 
-## Read in this order
+## Shipped surface
 
-1. `../README.md`
-2. `00-principles.md` — the design rules that govern every other choice in the tool
-3. `10-when-to-use-this.md` — whether devlane is the right fit for your setup
-4. `15-tech-stack.md` — implementation language, tooling, and repo policy choices
-5. `20-concepts.md`
-6. `30-quickstart.md`
+`devlane` ships these commands today: `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, `doctor`, `host` (`status` / `doctor` / `gc`), `reassign`, and `worktree` (`create` / `remove`). The exact contract for each lives in `40-cli-contract.md`.
 
-Then choose a branch:
+## Tiers
 
-- Need the shared tool contract? Read `40-cli-contract.md`.
-- Need to adapt a repo? Read `50-adapter-schema.md` and `90-example-integrations.md`.
-- Need to wire agents to the tool? Read `60-manifest-contract.md` and `80-agent-playbook.md`.
-- Need the host-wide port and lane model? Read `65-host-catalog.md`.
-- Need the container pattern? Read `70-container-workflow.md`.
-- Need the bare-metal pattern? Read `75-baremetal-workflow.md`.
-- Need planning or acceptance context? Read `../plans/README.md`.
+- **Orientation** (read once to understand the model): `00-principles.md`, `10-when-to-use-this.md`, `20-concepts.md`. Situational: `15-tech-stack.md` (contributing to devlane itself), `30-quickstart.md` (first run).
+- **Reference contracts** (open on demand): `40-cli-contract.md` (commands), `50-adapter-schema.md` (what a repo declares), `60-manifest-contract.md` (what agents consume), `65-host-catalog.md` (ports, catalog, drift model).
+- **Task playbooks** (open for a worked sequence): `70-container-workflow.md`, `75-baremetal-workflow.md`, `80-agent-playbook.md`, `90-example-integrations.md`.
+
+## Route by task
+
+- New to devlane? Skim the Orientation tier, then jump to the contract for your task.
+- Changing or calling a command? `40-cli-contract.md`.
+- Adapting a repo? `50-adapter-schema.md` + `90-example-integrations.md` + the workflow playbook for your runtime pattern.
+- Wiring an agent to the tool? `60-manifest-contract.md` + `80-agent-playbook.md`.
+- Working on ports / the catalog / drift (`host *`, `reassign`, `worktree remove`)? `65-host-catalog.md` + `40-cli-contract.md`.
+- Containerized pattern? `70-container-workflow.md`. Bare-metal? `75-baremetal-workflow.md`.
+- Planning or acceptance context? `../plans/README.md`.
 
 ## The one-sentence summary
 

@@ -1,5 +1,7 @@
 # Container workflow
 
+> **Playbook** · Read this when you're adapting or operating a containerized (Compose) repo. Onward: `40-cli-contract.md` (commands), `50-adapter-schema.md` (adapter), `65-host-catalog.md` (ports).
+
 This is the **opt-in containerized pattern** in `devlane`. Repos use it by declaring `compose_files` in the adapter.
 
 The default pattern is bare-metal: see `75-baremetal-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both for hybrid mode.

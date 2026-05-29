@@ -1,0 +1,14 @@
+# Base service definitions for the agentchat example. The devlane overlay in
+# compose.devlane.yaml adds the lane-aware Traefik routing labels; discovery is
+# via the proxy hostname, so the base services do not publish host ports.
+# Images are placeholders — this example is illustrative, not a runnable app.
+services:
+  web:
+    image: node:22-alpine
+    profiles: [web]
+    command: ["sh", "-c", "echo agentchat web placeholder; sleep infinity"]
+
+  server:
+    image: node:22-alpine
+    profiles: [server]
+    command: ["sh", "-c", "echo agentchat server placeholder; sleep infinity"]

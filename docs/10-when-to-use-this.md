@@ -1,5 +1,7 @@
 # When to use devlane
 
+> **Orientation** · Read this when you're deciding whether devlane is the right fit before adopting it. Onward: `30-quickstart.md` to try it, `90-example-integrations.md` for repo shapes.
+
 Devlane is not a general-purpose local-dev tool. It targets a specific pain that shows up above a certain scale, and below that scale lighter-weight tools are a better fit.
 
 ## The trigger
@@ -48,7 +50,7 @@ The tool pays for itself in "agent never asks 'what port is this on again'" mome
 You do not need to adopt all of devlane at once.
 
 - **Minimum useful adoption:** an adapter, `inspect --json` as the agent contract, and `prepare` generating the files the repo currently hand-manages. This alone eliminates most cross-agent confusion.
-- **Full adoption:** add `ports`, let the host catalog coordinate allocation across every repo on the host, and eventually use `worktree create` / `worktree remove` once that lifecycle surface ships for adapters that live at the checkout root.
+- **Full adoption:** add `ports`, let the host catalog coordinate allocation across every repo on the host, and use `worktree create` / `worktree remove` for adapters that live at the checkout root.
 
 Many teams sit at the minimum level for a while and expand when they hit the next coordination problem. That is the intended path.
 

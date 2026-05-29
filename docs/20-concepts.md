@@ -1,5 +1,7 @@
 # Concepts
 
+> **Orientation** · Read this first when the vocabulary (lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, drift) is unfamiliar. Onward: `40-cli-contract.md`, `50-adapter-schema.md`, `65-host-catalog.md`.
+
 This document introduces the minimum vocabulary.
 
 ## Lane
@@ -22,6 +24,8 @@ A lane is not only a Git branch. It is the combination of:
 - machine-readable manifest
 
 For dev lanes, the checkout path is the durable identity anchor. Branch, lane label, and mode are lane metadata that can change within that checkout without creating a brand-new lane record. Stable is the one special lane that may share a canonical checkout.
+
+Dev-lane worktrees are created and retired with `devlane worktree create <lane>` / `worktree remove <lane>`: `create` adds a sibling checkout on a new branch, copies the adapter's `worktree.seed` paths, and runs `prepare` so the lane's ports are registered before anything starts; `remove` retires the checkout and cleans up only its catalog rows.
 
 ## Slugification
 
@@ -104,6 +108,16 @@ The **host catalog** at `os.UserConfigDir()/devlane/catalog.json` is the tool-ow
 It is the manifest's peer at host scope: the manifest is the contract inside one lane, the catalog is the contract across lanes and repos.
 
 Allocations are sticky. The tool writes, agents and humans read.
+
+## Catalog drift and repair
+
+Over time, catalog rows can fall out of sync with reality — a worktree is deleted, an adapter drops a service, two rows claim one port. Three operator surfaces manage this:
+
+- `reassign` — move one service's allocation onto a fresh port (an explicit, sticky-aware repair).
+- `host status` — list every allocation on the host.
+- `host doctor` / `host gc` — `doctor` audits the catalog for drift (read-only); `gc` removes the rows that are provably safe to delete.
+
+**Drift** is the named set of inconsistencies `host doctor` reports: `missing-repoPath`, `missing-service`, `app-mismatch` (removable by `gc`), plus `duplicate-claim` and `bad-adapter` (surfaced for a human, never auto-removed). See the drift model in `65-host-catalog.md`.
 
 ## Generated outputs
 
