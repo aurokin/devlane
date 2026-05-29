@@ -15,8 +15,8 @@ You are working on the shared `devlane` tool.
 9. `docs/70-container-workflow.md`
 10. `docs/75-baremetal-workflow.md`
 11. `docs/80-agent-playbook.md`
-12. `docs/100-implementation-plan.md`
-13. `docs/110-acceptance-checklist.md`
+12. `plans/phase-roadmap.md`
+13. `plans/acceptance-checklist.md`
 
 ## Goal
 

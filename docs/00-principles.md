@@ -1,5 +1,7 @@
 # Principles
 
+> **Orientation** · Read this when you're weighing whether a feature or change fits devlane's design center — or a proposal "feels off" and you need the filter. Onward: the reference contracts (`40-cli-contract.md`, `50-adapter-schema.md`, `60-manifest-contract.md`, `65-host-catalog.md`) for the surfaces these rules govern.
+
 These are the load-bearing design rules for `devlane`. They are stable, they explain *why* the tool makes the choices it makes, and they are the filter every new feature or scope expansion has to pass.
 
 If you are staring at a proposal that seems to fit technically but feels off, check it against these principles first.
@@ -71,7 +73,7 @@ Once a `(app, repoPath, service)` allocation exists, it does not move during ord
 - `down` does not release.
 - `prepare` does not re-probe existing allocations.
 
-The usual ways a port will eventually move are explicit repair and cleanup flows. Those operator commands are planned, not fully shipped yet. The one stable-specific exception that already exists is the current checkout flipping from dev mode to stable mode: if its existing row is on a dev-only port, `prepare` / `inspect --json` must still honor the stable fixture instead of treating the dev port as authoritative.
+The usual ways a port moves are explicit repair and cleanup flows: `devlane reassign` moves a service off its current port, and `devlane host gc` drops catalog rows for checkouts that no longer exist. The one stable-specific exception is the current checkout flipping from dev mode to stable mode: if its existing row is on a dev-only port, `prepare` / `inspect --json` must still honor the stable fixture instead of treating the dev port as authoritative.
 
 Stickiness is what makes lane identity stable across stop/start cycles, worktree shelving, and machine reboots. Agents and external tools can cache port information with confidence. Cacheability is the whole point.
 

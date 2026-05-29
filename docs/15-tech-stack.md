@@ -1,5 +1,7 @@
 # Tech Stack
 
+> **Orientation (situational)** · Read this when you're building or contributing to devlane itself and need the language, tooling, lint, and test policy. Most adopters can skip it. Onward: `AGENTS.md` for working style.
+
 This document records the implementation-stack choices for `devlane` itself.
 
 It is about the shared tool, not the repos that adopt it. Adopter repos can still be Go, Node, Ruby, Rust, or anything else. The point here is to make the `devlane` implementation choices explicit and stable enough for contributors and agents to reason about.
@@ -44,6 +46,7 @@ Current shape:
 
 - standard library first
 - YAML parsing via `go.yaml.in/yaml/v3`
+- `golang.org/x/term` for TTY detection (used to gate interactive confirmation prompts)
 - external tools are invoked through subprocesses when the contract calls for them (`git`, `docker compose`)
 
 Why:
@@ -99,7 +102,7 @@ Linting uses `golangci-lint` with a deliberately small enabled set, configured i
 
 Current priorities:
 
-- correctness (`govet`, `errcheck`, `staticcheck`, `ineffassign`, `unused`)
+- correctness (`govet`, `errcheck`, `staticcheck`, `ineffassign`, `unused`, `unconvert`)
 - readability and maintainability (`revive`, `misspell`)
 - complexity pressure (`gocyclo`, `gocognit`)
 
@@ -120,14 +123,14 @@ Why:
 
 ### Test style
 
-The current test strategy is package-level unit tests with fixture-like temporary repos where needed.
+The test strategy is package-level unit tests plus CLI-level integration tests that drive real commands against fixture-like temporary git repos (see `internal/cli/*_test.go`).
 
 Why:
 
-- the implementation is still scaffold-stage
-- the highest-value tests right now are deterministic contract checks around manifest generation, rendering, and CLI-adjacent helpers
+- deterministic contract checks around manifest generation, rendering, and allocation remain the highest-value unit tests
+- the catalog and worktree flows that have shipped are covered by integration-style tests that exercise `prepare`, `host *`, `reassign`, and `worktree create` / `remove` end to end through temporary repos and a temporary catalog
 
-As the catalog and worktree flows land, integration-style tests should expand around those boundaries.
+New cross-cutting behavior should keep both layers in sync: unit tests for the pure logic, an integration test for the command path.
 
 ## Commands
 

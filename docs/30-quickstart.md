@@ -1,5 +1,7 @@
 # Quickstart
 
+> **Orientation (situational)** · Read this when you want the fastest path to a first working `inspect` / `prepare`. Onward: the workflow playbook for your runtime pattern — `70-container-workflow.md` or `75-baremetal-workflow.md`.
+
 This is the fastest path to a first concrete success with the current implementation.
 
 The walkthrough below uses `--mode dev` for the examples so it avoids depending on the stable fixture being free on your machine.

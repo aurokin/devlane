@@ -1,8 +1,10 @@
 # Bare-metal workflow
 
+> **Playbook** · Read this when you're adapting or operating a bare-metal repo. Onward: `40-cli-contract.md` (commands), `50-adapter-schema.md` (adapter), `65-host-catalog.md` (ports).
+
 This is the **default runtime pattern** in `devlane`. It is the shape for repos whose services run directly on the host — no containers, no shared ingress proxy, just processes binding real host ports.
 
-This document describes the current workflow. The host catalog already allocates and reports ports through `inspect`, `prepare`, `port`, and `status`. The remaining missing operator surface is the planned `reassign` and `host *` command set.
+This document describes the current workflow. The host catalog allocates and reports ports through `inspect`, `prepare`, `port`, and `status`, and the operator surface — `reassign`, `host status`, `host doctor`, `host gc` — has shipped. See `65-host-catalog.md` for those commands.
 
 The opt-in alternative is containerized: see `70-container-workflow.md`. The two patterns can coexist on the same machine, and the same adapter can declare both (hybrid mode).
 

@@ -1,5 +1,7 @@
 # Adapter schema
 
+> **Reference** · Read this when you're writing or changing a `devlane.yaml`. Onward: `60-manifest-contract.md` for what it produces, `90-example-integrations.md` for worked examples.
+
 Each repo contributes a `devlane.yaml`.
 
 The adapter should stay small and declarative. See principle #2 in `00-principles.md` — adapters describe, the tool orchestrates.

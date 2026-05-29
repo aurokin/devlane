@@ -34,7 +34,7 @@ Repos can still generate whatever app-specific files they need, but those files 
 
 ## What is already implemented in this kit
 
-The scaffold is intentionally small but already includes part of the host-catalog model:
+The CLI is small but covers the full lane lifecycle and host-catalog model:
 
 - reads a declarative `devlane.yaml`
 - derives a lane manifest from the current checkout
@@ -44,20 +44,23 @@ The scaffold is intentionally small but already includes part of the host-catalo
 - renders repo-local generated files from templates
 - projects `DEVLANE_PORT_*` into generated env when ports have been allocated
 - allocates sticky per-lane ports during `prepare`, with stable fixtures treated strictly
+- repairs allocations explicitly with `devlane reassign`, and inspects/cleans the host catalog with `devlane host status` / `host doctor` / `host gc` (backed by catalog drift detection)
+- creates and retires dev-lane worktrees with `devlane worktree create` / `worktree remove`, copying `worktree.seed` paths and registering the new lane's ports
 - builds lane-aware `docker compose` commands for containerized adapters; prints (never runs) bare-metal commands from `runtime.run.commands`
-- exposes `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, and `doctor`
+- exposes `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, `doctor`, `host` (`status` / `doctor` / `gc`), `reassign`, and `worktree` (`create` / `remove`)
 
 The host catalog itself lives under the OS user config directory: `os.UserConfigDir()/devlane`, with an explicit `XDG_CONFIG_HOME` taking precedence when set. In practice that is typically `~/.config/devlane` on Linux and `~/Library/Application Support/devlane` on macOS.
 
 ## What is not implemented yet
 
-The remaining unshipped surface is mostly operator and lifecycle work around the catalog:
+Phases 1–3 are shipped. The remaining surface is unscheduled "deep roadmap" work:
 
-- `devlane reassign <service>`
-- `devlane host status`, `host doctor`, `host gc`
-- `devlane worktree create` / `worktree remove`
+- UDP port allocation (the catalog is TCP-only today)
+- Windows support for catalog concurrency (the lock is a stub on non-Unix platforms)
+- `devlane up --wait` with health-probe integration (the manifest already emits `healthUrl`; nothing consumes it yet)
+- smarter `init` assistance around proxy signals (Traefik labels, Caddyfile, etc.), suggestion-only
 
-Those commands are not part of the shipped CLI. `docs/` describes current behavior; planning detail lives under `plans/`.
+`docs/` describes current behavior; planning detail lives under `plans/`.
 
 ## Start here
 
@@ -89,19 +92,31 @@ go tool gotestsum -- ./...
 
 ## Progressive disclosure map
 
-- `docs/README.md` — the reading map
+Each doc carries a one-line tier + "read this when" header. Open only as deep as your task needs.
+
+**Orientation** — understand the model:
+
+- `docs/README.md` — the reading map / task router
 - `docs/00-principles.md` — the design rules that govern every other choice in the tool
 - `docs/10-when-to-use-this.md` — whether devlane is the right fit for your setup
-- `docs/15-tech-stack.md` — implementation language, tooling, and repository policy choices
-- `docs/20-concepts.md` — lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, generated outputs
-- `docs/30-quickstart.md` — fastest path to a first success
-- `docs/40-cli-contract.md` — what the shared tool owns
+- `docs/20-concepts.md` — lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, drift
+- `docs/15-tech-stack.md` — implementation language and tooling (situational: contributing to devlane)
+- `docs/30-quickstart.md` — fastest path to a first success (situational: first run)
+
+**Reference contracts** — open on demand:
+
+- `docs/40-cli-contract.md` — what the shared tool owns (commands, flags, exit codes)
 - `docs/50-adapter-schema.md` — what each repo declares
 - `docs/60-manifest-contract.md` — what agents consume
-- `docs/65-host-catalog.md` — host-wide port and lane coordination
+- `docs/65-host-catalog.md` — host-wide port, catalog, and drift model
+
+**Task playbooks** — open for a worked sequence:
+
 - `docs/70-container-workflow.md` — containerized pattern
 - `docs/75-baremetal-workflow.md` — bare-metal pattern
+- `docs/80-agent-playbook.md` — how agents drive the tool (discovery, conflict handling)
 - `docs/90-example-integrations.md` — how this maps onto real repos
+
 - `plans/README.md` — planning and acceptance artifacts outside the primary docs path
 
 ## Project layout
@@ -122,14 +137,14 @@ devlane-agent-kit/
 
 ## Suggested next milestone
 
-Keep the remaining implementation work narrow and dependable:
+The lane lifecycle, host catalog, operator commands, and worktree lifecycle have all shipped. Good next steps:
 
-1. adopt `devlane.yaml` in one repo
-2. make `inspect --json` authoritative
+1. adopt `devlane.yaml` in one repo (`devlane init`)
+2. make `inspect --json` authoritative for that repo's agents
 3. make `prepare` generate the files that repo currently hand-manages
 4. make `up` and `down` lane-aware via Compose project names
-5. finish the remaining operator surface around the already-shipped host catalog (`reassign`, `host *`)
-6. delay worktree create/remove until the manifest and host-catalog contracts feel stable
+5. exercise `devlane worktree create` for parallel dev lanes, and `host doctor` / `host gc` to keep the catalog clean
+6. pick up the deep-roadmap items above (UDP, Windows locking, `up --wait`, proxy-signal hints) as the need arises
 
 ## Why this is docs-first
 

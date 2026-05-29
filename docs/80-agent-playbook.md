@@ -1,5 +1,7 @@
 # Agent playbook
 
+> **Playbook** · Read this when you're an agent driving devlane — discovery, `inspect --json`, conflict handling. Onward: `60-manifest-contract.md` (what you consume), `40-cli-contract.md` (commands).
+
 This document explains how coding agents should use `devlane`.
 
 ## Default sequence

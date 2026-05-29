@@ -13,23 +13,17 @@ The goal is to remove repo-specific guesswork around ports, worktrees, generated
 
 ## Read path
 
-Read in this order unless you already know the area you are touching:
-
-1. `README.md`
-2. `docs/README.md`
-3. `docs/00-principles.md`
-4. `docs/10-when-to-use-this.md`
-5. `docs/15-tech-stack.md`
-6. `docs/30-quickstart.md`
-
-Then branch by task:
+Branch straight to the docs your task needs — each doc's header says when to read it. The shipped command surface is `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, `doctor`, `host` (`status` / `doctor` / `gc`), `reassign`, and `worktree` (`create` / `remove`); `docs/40-cli-contract.md` is the authority on all of it.
 
 - **Core CLI or manifest work:** `docs/40-cli-contract.md`, `docs/50-adapter-schema.md`, `docs/60-manifest-contract.md`, then `cmd/devlane/` and `internal/`
-- **Port or host catalog work:** `docs/65-host-catalog.md`, then `docs/80-agent-playbook.md` for the conflict-handling protocol
+- **Port, host catalog, or drift work (`host *`, `reassign`, `worktree remove`):** `docs/65-host-catalog.md` (catalog + drift model) and `docs/40-cli-contract.md` (command behavior), then `docs/80-agent-playbook.md` for the conflict-handling protocol
+- **Worktree lifecycle work:** `docs/40-cli-contract.md` (`worktree create` / `remove`) and `docs/50-adapter-schema.md` (`worktree.seed`)
 - **Runtime patterns (containerized or bare-metal):** `docs/70-container-workflow.md` and `docs/75-baremetal-workflow.md`, then the matching examples under `examples/`
 - **Repo adoption work:** `docs/90-example-integrations.md`, then `examples/agentchat/` or `examples/wowhead_cli/`
 - **Planning / acceptance work:** `plans/README.md`, then `plans/phase-roadmap.md` and `plans/acceptance-checklist.md`
 - **Prompt handoff work:** `prompts/README.md`
+
+New here? Skim the orientation tier once before branching: `README.md`, `docs/README.md`, `docs/00-principles.md`, `docs/10-when-to-use-this.md`, `docs/20-concepts.md`. `docs/15-tech-stack.md` and `docs/30-quickstart.md` are situational (contributing to devlane itself; first run).
 
 ## Non-negotiables
 
@@ -81,14 +75,18 @@ A feature is done when:
 - tests cover the new behavior
 - the change still respects the non-negotiables above
 
-## Recommended implementation order
+## Build order (historical)
 
-1. Keep `inspect` and `prepare` rock-solid.
-2. Keep template rendering deterministic and easy to reason about.
-3. Add `devlane init` as a zero-friction entry point for new adopters.
-4. Improve Compose lifecycle support.
-5. Land the host catalog and port allocation before anything that depends on cross-project coordination.
-6. Add worktree lifecycle support (`create` + `remove`, with `worktree.seed` copying) only after the manifest contract and host catalog are stable.
+Phases 1–3 shipped in this order; the list records how the system was layered, not pending work:
+
+1. `inspect` and `prepare` kept rock-solid.
+2. Template rendering kept deterministic and easy to reason about.
+3. `devlane init` added as a zero-friction entry point for new adopters.
+4. Compose lifecycle support.
+5. The host catalog and port allocation, plus the operator surface (`reassign`, `host status` / `doctor` / `gc`).
+6. Worktree lifecycle (`create` + `remove`, with `worktree.seed` copying), once the manifest contract and host catalog were stable.
+
+What remains is unscheduled deep-roadmap work (UDP allocation, Windows catalog locking, `up --wait`, proxy-signal hints in `init`); see `plans/phase-roadmap.md`.
 
 Phase 4 (proxy integration) and Phase 5 (stable deploy) have been **cut from the roadmap** per non-negotiable #11. Do not propose them.
 

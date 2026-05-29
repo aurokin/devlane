@@ -1,5 +1,7 @@
 # Example integrations
 
+> **Playbook** · Read this when you're picking an example adapter to model your repo on. Onward: `50-adapter-schema.md`, then the chosen adapter under `examples/`.
+
 This kit includes four example adapters at increasing realism.
 
 ## 1. `examples/minimal-web/`
@@ -35,8 +37,8 @@ It demonstrates:
 
 - `kind: hybrid` with both `runtime.compose_files` and `runtime.run.commands`
 - `devlane up` printing the bare-metal commands first, then running `docker compose up`
-- a phase-1-safe hybrid setup with static default ports in the generated files and printed commands
-- a compose sidecar that stays lane-aware through the compose project name even before host-catalog-backed port allocation lands
+- host-catalog-backed ports with `pool_hint` subranges, rendered into the bare-metal commands and templates via `{{ports.web}}` / `{{ports.redis}}`
+- a compose sidecar that stays lane-aware through both the compose project name and its catalog-allocated host port
 
 ## 4. `examples/wowhead_cli/`
 
