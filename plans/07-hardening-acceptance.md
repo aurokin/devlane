@@ -1,5 +1,7 @@
 # Milestone 7: Hardening and Acceptance
 
+> **Status: ongoing.** Examples, prompt templates, schemas, and docs were synchronized to the shipped surface (progressive-disclosure restructure), and the obsolete pre-rewrite-scaffold / dead-code pass (work-breakdown item 5) is done. Driving the full acceptance checklist to green is the standing closeout bar. Current references: `plans/acceptance-checklist.md`, `docs/00-principles.md`. The plan below is kept as the historical milestone record.
+
 ## Goal
 
 Close the rewrite by driving the full acceptance checklist to green and replacing example-only scaffolding with a maintainable product baseline.

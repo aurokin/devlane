@@ -12,6 +12,8 @@ Current implementation note:
 
 ## Phase 1 — contract first
 
+> **Status: shipped.**
+
 Goal: make the shared manifest, generated-output flow, and lifecycle shape real before taking over host-wide coordination.
 
 Deliverables:
@@ -43,13 +45,15 @@ Deliverables:
 
 ## Phase 2 — host catalog operator commands
 
+> **Status: shipped.**
+
 Goal: ship the operator command surface for the host catalog so port queries, repairs, audits, and cleanup are first-class CLI flows instead of manual catalog edits.
 
 This phase is a prerequisite for worktree lifecycle automation because `worktree create` should register allocations into the catalog when a new lane is spun up.
 
-Phase 1 stabilization shipped most of the originally-planned Phase 2 plumbing. The host config parser, catalog persistence with lock-then-rename atomicity, sticky allocation engine, IPv4/IPv6 probing, catalog-coupled `prepare` orchestration with rollback, manifest `ports` and `ready`, `inspect --json` recompute from live catalog, `status` host-port reporting, the catalog identity model, and the catalog schema at `schemas/catalog.schema.json` are all in place. What remains is the operator surface plus targeted polish.
+Phase 1 stabilization shipped most of the originally-planned Phase 2 plumbing. The host config parser, catalog persistence with lock-then-rename atomicity, sticky allocation engine, IPv4/IPv6 probing, catalog-coupled `prepare` orchestration with rollback, manifest `ports` and `ready`, `inspect --json` recompute from live catalog, `status` host-port reporting, the catalog identity model, and the catalog schema at `schemas/catalog.schema.json` were already in place. The operator surface and that targeted polish shipped in Phase 2.
 
-Execution state is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Per-issue acceptance bars live in Linear; the deliverables below describe the shape.
+Execution history is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Per-issue acceptance bars live in Linear; the deliverables below describe the shape that shipped.
 
 Deliverables:
 
@@ -76,6 +80,8 @@ Deliverables:
 - the catalog remains the sole durable authority for assigned ports, while `inspect --json` remains the fresh read surface and `.devlane/manifest.json` remains only a snapshot
 
 ## Phase 3 — worktree lifecycle (final phase)
+
+> **Status: shipped.**
 
 Goal: let the shared tool create and retire lanes, not only operate inside them. This is the last planned phase.
 

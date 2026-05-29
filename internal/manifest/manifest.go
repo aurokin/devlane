@@ -173,11 +173,6 @@ func canonicalPathOrClean(path string) string {
 	return canonical
 }
 
-func Validate(adapter *config.AdapterConfig, options Options) error {
-	_, err := BuildInputs(adapter, options)
-	return err
-}
-
 func Build(adapter *config.AdapterConfig, options Options) (Manifest, error) {
 	inputs, err := BuildInputs(adapter, options)
 	if err != nil {

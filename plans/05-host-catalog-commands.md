@@ -1,8 +1,8 @@
 # Milestone 5: Host Catalog Operator Commands
 
-Execution state is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Per-issue acceptance criteria live in Linear.
+> **Status: shipped (Phase 2).** The operator command surface — `devlane port`, `host status`, `host doctor`, `host gc`, and `reassign` — plus the exported catalog API (`Allocation` + `List()`), the `Mutate(fn)` mutation primitive, the lane resolver, the drift-detection module, and the stable-port collision recipes are all in the codebase and tested. Current contract: `docs/40-cli-contract.md` (commands), `docs/65-host-catalog.md` (catalog + drift + collision recovery), `docs/80-agent-playbook.md` (agent conflict-handling).
 
-The shape of the work is summarized in `plans/phase-roadmap.md` Phase 2 section. The operator-facing contract lives in `docs/40-cli-contract.md` (commands flip from "Not shipped" to shipped as each issue lands), `docs/65-host-catalog.md` (collision recovery), and `docs/80-agent-playbook.md` (agent conflict-handling).
+Execution history is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133); per-issue acceptance criteria live in Linear. The issue index below is kept as the historical record.
 
 ## Linear issues
 

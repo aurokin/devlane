@@ -8,6 +8,8 @@ This docs set is organized for progressive disclosure. Each doc carries a one-li
 
 ## Tiers
 
+The leading number groups each doc by tier — **00–30** orientation, **40–65** reference contracts, **70–90** task playbooks — so the filename alone tells you how deep it sits.
+
 - **Orientation** (read once to understand the model): `00-principles.md`, `10-when-to-use-this.md`, `20-concepts.md`. Situational: `15-tech-stack.md` (contributing to devlane itself), `30-quickstart.md` (first run).
 - **Reference contracts** (open on demand): `40-cli-contract.md` (commands), `50-adapter-schema.md` (what a repo declares), `60-manifest-contract.md` (what agents consume), `65-host-catalog.md` (ports, catalog, drift model).
 - **Task playbooks** (open for a worked sequence): `70-container-workflow.md`, `75-baremetal-workflow.md`, `80-agent-playbook.md`, `90-example-integrations.md`.
