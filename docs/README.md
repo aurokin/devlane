@@ -2,6 +2,9 @@
 
 This docs set is organized for progressive disclosure. Each doc carries a one-line **tier + "read this when"** header; open only as deep as your task needs.
 
+> [!IMPORTANT]
+> devlane is superseded for the author's workflow — read [`05-project-status.md`](05-project-status.md) before adopting. Short version: prefer [worktrunk](https://worktrunk.dev) + [portless](https://github.com/vercel-labs/portless).
+
 ## Shipped surface
 
 `devlane` ships these commands today: `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, `doctor`, `host` (`status` / `doctor` / `gc`), `reassign`, and `worktree` (`create` / `remove`). The exact contract for each lives in `40-cli-contract.md`.
@@ -10,7 +13,7 @@ This docs set is organized for progressive disclosure. Each doc carries a one-li
 
 The leading number groups each doc by tier — **00–30** orientation, **40–65** reference contracts, **70–90** task playbooks — so the filename alone tells you how deep it sits.
 
-- **Orientation** (read once to understand the model): `00-principles.md`, `10-when-to-use-this.md`, `20-concepts.md`. Situational: `15-tech-stack.md` (contributing to devlane itself), `30-quickstart.md` (first run).
+- **Orientation** (read once to understand the model): `05-project-status.md` (is devlane still the right choice?), `00-principles.md`, `10-when-to-use-this.md`, `20-concepts.md`. Situational: `15-tech-stack.md` (contributing to devlane itself), `30-quickstart.md` (first run).
 - **Reference contracts** (open on demand): `40-cli-contract.md` (commands), `50-adapter-schema.md` (what a repo declares), `60-manifest-contract.md` (what agents consume), `65-host-catalog.md` (ports, catalog, drift model).
 - **Task playbooks** (open for a worked sequence): `70-container-workflow.md`, `75-baremetal-workflow.md`, `80-agent-playbook.md`, `90-example-integrations.md`.
 

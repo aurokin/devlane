@@ -1,5 +1,18 @@
 # devlane agent kit
 
+> [!IMPORTANT]
+> **devlane is superseded for the author's day-to-day workflow.** I now use
+> **[worktrunk](https://worktrunk.dev)** for git-worktree lifecycle (parallel agents)
+> and **[portless](https://github.com/vercel-labs/portless)** (from Vercel) for stable
+> `*.localhost` URLs and per-worktree ports — and I'd recommend you reach for those
+> first. Together they cover most of what devlane does, more automatically and with far
+> more polish. devlane keeps a narrow edge only for a machine-wide port catalog (drift
+> audit / `gc` / `reassign`) and a structured agent manifest, in the specific case of
+> many fixed-host-port services across many repos.
+>
+> **See [`docs/05-project-status.md`](docs/05-project-status.md) for the full comparison
+> and the cases where devlane still applies.**
+
 `devlane` is a docs-first starter kit for building a shared local-development control plane around **stable** and **dev** lanes.
 
 It is designed for the case where you have many repos, many worktrees, some stable host-managed install or hostname, and a growing amount of parallel work performed by humans and coding agents.
@@ -97,6 +110,7 @@ Each doc carries a one-line tier + "read this when" header. Open only as deep as
 **Orientation** — understand the model:
 
 - `docs/README.md` — the reading map / task router
+- `docs/05-project-status.md` — project status: superseded by worktrunk + portless, and when devlane still applies
 - `docs/00-principles.md` — the design rules that govern every other choice in the tool
 - `docs/10-when-to-use-this.md` — whether devlane is the right fit for your setup
 - `docs/20-concepts.md` — lane, stable vs dev, runtime patterns, adapter, manifest, host catalog, drift
