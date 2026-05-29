@@ -176,6 +176,23 @@ func TestCopyFileReplacesSymlinkInsteadOfFollowing(t *testing.T) {
 	}
 }
 
+func TestTargetWorktreeAppReadsTargetAdapter(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "devlane.yaml"), "schema: 1\napp: otherapp\nkind: cli\nlane:\n  stable_name: stable\n  stable_branches: [main]\n  project_pattern: \"{app}_{lane}\"\n  path_roots:\n    state: .devlane/state\n    cache: .devlane/cache\n    runtime: .devlane/runtime\noutputs:\n  manifest_path: .devlane/manifest.json\n  generated: []\n", 0o644)
+
+	app, ok := targetWorktreeApp(dir, "devlane.yaml")
+	if !ok || app != "otherapp" {
+		t.Fatalf("expected (otherapp, true), got (%q, %v)", app, ok)
+	}
+}
+
+func TestTargetWorktreeAppFallsBackWhenAdapterMissing(t *testing.T) {
+	dir := t.TempDir()
+	if _, ok := targetWorktreeApp(dir, "devlane.yaml"); ok {
+		t.Fatal("expected ok=false when the target adapter is absent")
+	}
+}
+
 func mustWrite(t *testing.T, path, content string, mode os.FileMode) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

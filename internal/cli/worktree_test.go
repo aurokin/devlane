@@ -3,6 +3,7 @@ package cli_test
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -286,6 +287,56 @@ func TestWorktreeRemoveCanonicalizesSymlinkedPathForCleanup(t *testing.T) {
 		t.Fatalf("expected worktree removed, stat err: %v", err)
 	}
 	assertCatalogAllocations(t, catalogPathFor(repo), 0)
+}
+
+func TestWorktreeRemoveScopesCleanupByTargetWorktreeApp(t *testing.T) {
+	repo := testutil.InitDemoRepo(t)
+	sibling := siblingPath(t, repo, "feat")
+
+	// Build the worktree manually so its adapter carries a different app than the
+	// caller, and register its catalog row under that app — the divergent-app
+	// case the acceptance contract scopes cleanup against. (worktree create would
+	// force the caller's app, since it branches from HEAD.)
+	gitWorktreeAdd(t, repo, sibling, "feat")
+	siblingAdapter := filepath.Join(sibling, "devlane.yaml")
+	payload, err := os.ReadFile(siblingAdapter)
+	if err != nil {
+		t.Fatalf("read sibling adapter: %v", err)
+	}
+	rewritten := strings.Replace(string(payload), "app: demoapp", "app: otherapp", 1)
+	if rewritten == string(payload) {
+		t.Fatal("expected to rewrite the sibling app identifier")
+	}
+	if err := os.WriteFile(siblingAdapter, []byte(rewritten), 0o644); err != nil {
+		t.Fatalf("rewrite sibling adapter: %v", err)
+	}
+	if code, _, stderr := runCLI(t, []string{"prepare", "--cwd", sibling}); code != 0 {
+		t.Fatalf("prepare under otherapp failed: %d\n%s", code, stderr)
+	}
+	assertCatalogAllocations(t, catalogPathFor(repo), 1)
+
+	code, stdout, stderr := runCLI(t, []string{"worktree", "remove", "feat", "--cwd", repo, "--force"})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	// The single row was registered under the target worktree's app, so scoped
+	// cleanup must match it (and name that app), not the caller's app.
+	if !strings.Contains(stdout, "1 catalog allocation") || !strings.Contains(stdout, `app "otherapp"`) {
+		t.Fatalf("expected cleanup to key on the target app, got stdout:\n%s", stdout)
+	}
+	assertCatalogAllocations(t, catalogPathFor(repo), 0)
+	if _, err := os.Stat(sibling); !os.IsNotExist(err) {
+		t.Fatalf("expected worktree removed, stat err: %v", err)
+	}
+}
+
+func gitWorktreeAdd(t *testing.T, repo, path, branch string) {
+	t.Helper()
+	cmd := exec.Command("git", "worktree", "add", "-b", branch, path, "HEAD")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add failed: %v\n%s", err, out)
+	}
 }
 
 func resolvePath(t *testing.T, path string) string {
