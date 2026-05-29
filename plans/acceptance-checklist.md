@@ -155,7 +155,7 @@ Phase 2 acceptance is tracked in the Linear milestone "Phase 2: Host Catalog Ope
 
 Most originally-planned Phase 2 acceptance items shipped during Phase 1 stabilization (host config persistence, catalog lock-then-rename, IPv4/IPv6 probing with `V6ONLY=1`, sticky allocation, catalog identity model, deterministic multi-service allocation, catalog-coupled `prepare`, manifest `ports` and top-level `ready`, host-port `status` reporting). Those invariants are exercised by the current portalloc and CLI test suites and described in `docs/65-host-catalog.md`.
 
-Remaining Phase 2 acceptance — the operator command surface (`port`, `reassign`, `host status`, `host doctor`, `host gc`), the catalog-mutation primitive, drift detection, lane resolution, the three stable-port collision recipes, and the Windows error copy fix — is owned by the Linear tickets and indexed in `plans/05-host-catalog-commands.md`.
+The rest of Phase 2 — the operator command surface (`port`, `reassign`, `host status`, `host doctor`, `host gc`), the catalog-mutation primitive, drift detection, lane resolution, the three stable-port collision recipes, and the Windows error copy fix — shipped as well; the contract lives in `docs/40-cli-contract.md` and `docs/65-host-catalog.md`, and the milestone history is indexed in `plans/05-host-catalog-commands.md`.
 
 ## Phase 3 acceptance
 

@@ -2,8 +2,6 @@ package render
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -36,28 +34,6 @@ func Text(template string, context map[string]any) (string, error) {
 
 	builder.WriteString(template[last:])
 	return builder.String(), nil
-}
-
-func File(templatePath, destinationPath string, context map[string]any) error {
-	payload, err := os.ReadFile(templatePath)
-	if err != nil {
-		return fmt.Errorf("read template: %w", err)
-	}
-
-	rendered, err := Text(string(payload), context)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
-		return fmt.Errorf("create destination parent: %w", err)
-	}
-
-	if err := os.WriteFile(destinationPath, []byte(rendered), 0o644); err != nil {
-		return fmt.Errorf("write rendered output: %w", err)
-	}
-
-	return nil
 }
 
 func lookup(mapping map[string]any, path string) (any, error) {

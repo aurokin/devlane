@@ -1,5 +1,7 @@
 # Milestone 1: Contract Core
 
+> **Status: shipped (Phase 1).** The contract core — adapter loading/validation, adapter discovery, lane resolution, manifest derivation, env projection, generated-file rendering, and sidecar-hash tracking behind `inspect` and `prepare` — is in the codebase and exercised by the `manifest`, `portalloc`, and `cli` test suites. Current contract: `docs/40-cli-contract.md`, `docs/50-adapter-schema.md`, `docs/60-manifest-contract.md`. The plan below is kept as the historical milestone record.
+
 ## Goal
 
 Rebuild the core domain engine so `inspect --json` and `prepare` are authoritative, deterministic, and driven by the documented contracts rather than the current example implementation.

@@ -1,5 +1,7 @@
 # Milestone 2: Init
 
+> **Status: shipped (Phase 1).** `devlane init` ships with depth-3 monorepo scanning, runtime classification, the `containerized-web` / `baremetal-web` / `hybrid-web` / `cli` starter templates, and the `--from` / `--app` / `--list` / `--all` / `--yes` / `--force` flags. Current contract: `docs/40-cli-contract.md`, `docs/50-adapter-schema.md`. The plan below is kept as the historical milestone record.
+
 ## Goal
 
 Ship `devlane init` as the zero-friction adoption entry point for new repos, including monorepo scanning and starter template generation.

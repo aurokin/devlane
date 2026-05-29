@@ -1,5 +1,7 @@
 # Milestone 3: Lifecycle Commands
 
+> **Status: shipped (Phase 1).** `up`, `down`, `status`, and `doctor` ship with adapter-shape-driven behavior for containerized, bare-metal, hybrid, and no-lifecycle adapters, plus `--dry-run`. Current contract: `docs/40-cli-contract.md`, `docs/70-container-workflow.md`, `docs/75-baremetal-workflow.md`. The plan below is kept as the historical milestone record.
+
 ## Goal
 
 Finish runtime command behavior for containerized, bare-metal, and hybrid adapters while keeping the supervised-substrate rule intact.

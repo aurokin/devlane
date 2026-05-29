@@ -43,11 +43,6 @@ func BuildCommand(manifest manifest.Manifest, action string, extraProfiles []str
 	return command, nil
 }
 
-func DockerAvailable() bool {
-	_, err := exec.LookPath("docker")
-	return err == nil
-}
-
 func DockerComposeAvailable() error {
 	dockerPath, err := exec.LookPath("docker")
 	if err != nil {

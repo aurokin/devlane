@@ -1,5 +1,7 @@
 # Milestone 6: Worktree Lifecycle
 
+> **Status: shipped (Phase 3).** `devlane worktree create` and `worktree remove` ship with seed-file/directory copying, generated-output skip, missing-source warnings, scoped catalog cleanup, and the `adapterRoot == repoRoot` gate that rejects subtree adapters. Current contract: `docs/40-cli-contract.md`, `docs/80-agent-playbook.md`; seed declaration lives in `docs/50-adapter-schema.md`. The plan below is kept as the historical milestone record.
+
 ## Goal
 
 Let devlane create and retire lanes end to end through `git worktree` integration and explicit seed-file copying.
