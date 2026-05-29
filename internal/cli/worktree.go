@@ -214,10 +214,17 @@ func runWorktreeRemove(args []string) int {
 	}
 
 	// Capture the identity key before removal so scoped cleanup still works
-	// after the directory is gone. Canonicalize while the path still exists:
-	// prepare stored catalog rows under the symlink-resolved repo root, and
-	// sameCatalogRepoPath cannot resolve symlinks once git deletes the worktree.
+	// after the directory is gone. Read the app from the worktree being removed
+	// so cleanup keys on the target checkout's identity (prepare registered its
+	// rows under that app); fall back to this checkout's app when the target
+	// adapter is unreadable — the two are identical for any worktree that
+	// `worktree create` produced. Canonicalize the repoPath while the path still
+	// exists: prepare stored catalog rows under the symlink-resolved repo root,
+	// and sameCatalogRepoPath cannot resolve symlinks once git deletes the dir.
 	app := ctx.adapter.App
+	if targetApp, ok := targetWorktreeApp(targetAbs, ctx.configBase); ok {
+		app = targetApp
+	}
 	repoPath := targetAbs
 	if canonical, canonErr := util.CanonicalPath(targetAbs); canonErr == nil {
 		repoPath = canonical
@@ -464,6 +471,19 @@ func prepareCreatedWorktree(worktreePath, configBase string) ([]string, error) {
 		return nil, err
 	}
 	return result.Messages, nil
+}
+
+// targetWorktreeApp reads the app identity from the worktree being removed so
+// scoped cleanup keys on the identity prepare registered there, per the Phase 3
+// acceptance contract. It returns false when the worktree's adapter cannot be
+// read, leaving the caller to fall back to its own app — identical for any
+// worktree produced by `worktree create`.
+func targetWorktreeApp(worktreePath, configBase string) (string, bool) {
+	adapter, err := config.LoadAdapter(filepath.Join(worktreePath, configBase))
+	if err != nil {
+		return "", false
+	}
+	return adapter.App, true
 }
 
 func removeScopedAllocations(app, repoPath string) (int, error) {
