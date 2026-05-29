@@ -71,6 +71,8 @@ func Run(args []string) int {
 		return runHost(args[1:])
 	case "reassign":
 		return runReassign(args[1:])
+	case "worktree":
+		return runWorktree(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", args[0])
 		printUsage()
@@ -356,9 +358,27 @@ func needsCatalogPrepare(adapter *config.AdapterConfig, lane portalloc.Lane) (bo
 }
 
 func runCatalogPrepare(adapter *config.AdapterConfig, laneManifest manifest.Manifest, lane portalloc.Lane) int {
-	session, err := portalloc.BeginPrepare(adapter, lane)
+	messages, updated, err := executeCatalogPrepare(adapter, laneManifest, lane)
 	if err != nil {
 		return exitError(err)
+	}
+	for _, message := range messages {
+		fmt.Println(message)
+	}
+
+	fmt.Printf("prepared lane %q at %s\n", updated.Lane.Name, updated.Paths.Manifest)
+	return 0
+}
+
+// executeCatalogPrepare runs the catalog-coupled prepare flow (allocate under
+// the lock, write repo-local outputs, publish, release) and returns the
+// prepare messages and the manifest with applied port states. It performs no
+// output of its own so callers like worktree create can react to failure with
+// their own recovery guidance.
+func executeCatalogPrepare(adapter *config.AdapterConfig, laneManifest manifest.Manifest, lane portalloc.Lane) ([]string, manifest.Manifest, error) {
+	session, err := portalloc.BeginPrepare(adapter, lane)
+	if err != nil {
+		return nil, laneManifest, err
 	}
 	defer session.Close()
 
@@ -366,23 +386,19 @@ func runCatalogPrepare(adapter *config.AdapterConfig, laneManifest manifest.Mani
 
 	result, rollback, err := write.PrepareWithRollback(laneManifest, adapter)
 	if err != nil {
-		return exitError(err)
+		return nil, laneManifest, err
 	}
 	if err := publishPrepareSession(session); err != nil {
 		if rollbackErr := rollback(); rollbackErr != nil {
-			return exitError(fmt.Errorf("%w; rollback local prepare state: %v", err, rollbackErr))
+			return nil, laneManifest, fmt.Errorf("%w; rollback local prepare state: %v", err, rollbackErr)
 		}
-		return exitError(err)
+		return nil, laneManifest, err
 	}
 	if err := closePrepareSession(session); err != nil {
-		return exitError(fmt.Errorf("prepared lane %q and published catalog state, but failed to release the catalog lock: %w", laneManifest.Lane.Name, err))
-	}
-	for _, message := range result.Messages {
-		fmt.Println(message)
+		return nil, laneManifest, fmt.Errorf("prepared lane %q and published catalog state, but failed to release the catalog lock: %w", laneManifest.Lane.Name, err)
 	}
 
-	fmt.Printf("prepared lane %q at %s\n", laneManifest.Lane.Name, laneManifest.Paths.Manifest)
-	return 0
+	return result.Messages, laneManifest, nil
 }
 
 func applyPortStates(base manifest.Manifest, states map[string]portalloc.State, ready bool) manifest.Manifest {
@@ -744,5 +760,5 @@ func exitError(err error) int {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|port|up|down|status|doctor|host|reassign> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: devlane <init|inspect|prepare|port|up|down|status|doctor|host|reassign|worktree> [flags]")
 }

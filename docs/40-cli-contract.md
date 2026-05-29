@@ -22,12 +22,10 @@ Host commands:
 - `host doctor`
 - `host gc`
 
-Not shipped:
+Worktree commands:
 
 - `worktree create`
 - `worktree remove`
-
-Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in this contract doc.
 
 ## Lifecycle commands
 
@@ -85,6 +83,14 @@ Planning detail for those commands lives in `../plans/phase-roadmap.md`, not in 
   - `--lane <name>` selects the target row by lane name within the current adapter's `app`. Resolution scopes to repo context (no cross-app scanning); worktrees of the same app match because their `repoPath` values resolve under symlink evaluation. When more than one checkout in the same app shares the lane name, the resolver's tiebreak prefers the caller's own `repoPath` so an operator inside a worktree can target their local lane unambiguously. If no match wins the tiebreak, the command exits 1 and enumerates the colliding checkouts.
   - All mutations go through the catalog `Mutate` primitive (lock-then-rename) so concurrent `prepare` and `reassign` invocations serialize correctly.
 
+- `worktree create <lane>` — add a new dev-lane checkout and register it. It runs `git worktree add` at the sibling path `<repo-root-parent>/<repo-root-base>-<lane-slug>` on a new branch named raw `<lane>` created from the current `HEAD`, copies the adapter's `worktree.seed` paths into the new checkout, then runs `prepare` there so the catalog records the new lane's ports before anyone starts it. It only operates when the active adapter lives at the Git worktree root (`adapterRoot == repoRoot`); a subtree adapter in a monorepo fails clearly and stays manual `git worktree` territory.
+  - `<lane>` must be a valid new local Git branch name and must slugify to a non-empty `<lane-slug>`. The command fails rather than guessing when the target path already exists, the branch already exists, or a distinct raw lane name would collide on the same slug (caught by the path-exists check). `<lane>` equal to the adapter's `stable_name` is rejected — the command is for new dev lanes only.
+  - Seed copying happens before `prepare`. Entries are `adapterRoot`-relative; absolute paths and paths that escape the repo root are rejected up front, before any checkout is created. Directories are copied recursively, symlinks are recreated as symlinks (never dereferenced), and regular-file mode bits are preserved best-effort. Existing destinations are overwritten, except entries that match an `outputs.generated[].destination` — those are skipped with a notice because `prepare` renders them. Missing sources warn and continue. The full list of copied paths is printed for security clarity.
+  - Failure is non-destructive: if seed copy or `prepare` fails after the checkout is created, the checkout (and any copied seeds) is left in place, the catalog mutation is not published, and the command prints the exact recovery action — fix the issue and run `devlane prepare` in the new checkout, or `git worktree remove --force` to abandon it. A successfully created checkout is never auto-removed.
+
+- `worktree remove <lane>` — retire a lane checkout and clean up its catalog rows. By default it resolves `<lane>` to the conventional sibling path; if that path does not exist it fails rather than guessing, and `--path <worktree>` targets a manually moved or renamed checkout. It captures the target's `app` and `repoPath` before removal, runs `git worktree remove`, then runs scoped catalog cleanup that deletes only allocations matching the removed worktree's `(app, repoPath)` — this is not `host gc` and never scans unrelated repos.
+  - Without `--force`, `git worktree remove` refuses a worktree with uncommitted or untracked changes (which includes `prepare`'s generated outputs); `--force` discards them. If `git worktree remove` fails, scoped cleanup does not run. If removal succeeds but cleanup fails, the command reports the partial state and points at `devlane host gc --app <app>` as the deterministic recovery.
+
 The bare-metal asymmetry is deliberate: with compose, the supervisor can answer whether a service is up. Without a supervisor, the best devlane can do is say whether the reserved port is bound.
 
 ## Ownership boundaries
@@ -110,7 +116,7 @@ The repo adapter owns:
 - which profiles are default
 - how repo-specific env/config files map from the manifest
 - bare-metal run commands (`runtime.run.commands`, always printed, never executed by devlane)
-- future worktree seed declarations (`worktree.seed`)
+- worktree seed declarations (`worktree.seed`), copied into new checkouts by `worktree create`
 
 The repo itself owns:
 
@@ -119,7 +125,7 @@ The repo itself owns:
 - product-specific wrapper semantics
 - stable deployment policy
 - bare-metal process supervision
-- manual git worktree flows until worktree lifecycle lands
+- branch content and any git worktree flows beyond `worktree create` / `worktree remove`
 
 ## Not in scope
 

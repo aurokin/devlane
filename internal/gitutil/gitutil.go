@@ -50,3 +50,37 @@ func CurrentBranch(cwd string) string {
 
 	return branch
 }
+
+// IsValidBranchName reports whether name is a well-formed local branch name.
+// It defers to `git check-ref-format`, the same validation git itself applies,
+// rather than reimplementing the ref-name rules.
+func IsValidBranchName(repoDir, name string) bool {
+	_, err := runGit(repoDir, "check-ref-format", "refs/heads/"+name)
+	return err == nil
+}
+
+// BranchExists reports whether a local branch named branch already exists.
+func BranchExists(repoDir, branch string) bool {
+	_, err := runGit(repoDir, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
+}
+
+// AddWorktree creates a new worktree at path on a new branch created from
+// commitish (typically "HEAD"). It fails if the branch or path already exists,
+// surfacing git's own error.
+func AddWorktree(repoDir, path, branch, commitish string) error {
+	_, err := runGit(repoDir, "worktree", "add", "-b", branch, path, commitish)
+	return err
+}
+
+// RemoveWorktree removes the worktree at path. Without force, git refuses when
+// the worktree has uncommitted or untracked changes; force discards them.
+func RemoveWorktree(repoDir, path string, force bool) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, path)
+	_, err := runGit(repoDir, args...)
+	return err
+}

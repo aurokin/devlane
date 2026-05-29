@@ -6,9 +6,9 @@ This scaffold is intentionally phased.
 
 Current implementation note:
 
-- the shipped CLI is `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, and `doctor`
+- the shipped CLI is `init`, `inspect`, `prepare`, `port`, `up`, `down`, `status`, `doctor`, `reassign`, `host status|doctor|gc`, and `worktree create|remove`
 - host-catalog-backed `ready`, `ports`, sticky allocation, and host-port-aware `status` are already implemented
-- the remaining unscheduled operator surface is mostly `reassign`, `host *`, plus Phase 3 worktree lifecycle
+- Phases 1–3 are shipped; the remaining surface is the unscheduled "Deep roadmap" items below (UDP allocation, Windows catalog concurrency, `up --wait`, smarter `init` proxy signals)
 
 ## Phase 1 — contract first
 
