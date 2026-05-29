@@ -162,47 +162,49 @@ This is a deliberate opt-in. The common shape is one number that means both.
 
 ## Collision handling
 
-The allocation and collision model below is current. The operator repair commands are not shipped yet, so collision recovery is still manual today.
+When stable's `prepare` finds its fixture (`stable_port` when declared, otherwise `default`) already held, the error classifies the holder and — for the two recoverable cases — emits a copy-pasteable recipe. The recipe always points `--cwd` at the **offending** checkout, so it is correct whether the squatting lane belongs to this app or another one.
 
-When stable's `prepare` finds its fixture (`stable_port` when declared, otherwise `default`) already held:
-
-### Scenario 1: Held by another app's stable
+### Scenario 1: Held by another stable lane
 
 ```
-ERROR: port 3000 is held by stable lane of app "otherapp" (service "api").
-Two stable fixtures cannot share a port.
-
-Resolve by editing one adapter's default, then re-running prepare:
-  - here:  /home/auro/code/myapp/devlane.yaml  (service "web", currently default: 3000)
-  - there: /home/auro/code/otherapp/devlane.yaml  (service "api", currently default: 3000)
+stable port 3000 for service "web" is unavailable: it is the stable fixture of lane "stable" (app "otherapp", service "api") at /home/auro/code/otherapp.
+Two stable fixtures cannot share a port — choosing which one moves is a human decision.
+Edit one adapter's `default`/`stable_port` so the fixtures differ, then re-run `devlane prepare`.
 ```
 
-Hard error. No command to run. Human picks which adapter moves.
+Hard error. No command to run — two stable fixtures cannot share a port, so a human picks which adapter moves.
 
 ### Scenario 2: Held by a dev lane, port currently free (dev lane offline)
 
 ```
-ERROR: port 3000 is held by dev lane "feature-x" (service "web") but is not currently bound.
-
-Current recovery is manual. Devlane does not yet ship a scoped repair command for this case.
-
-Resolve by either:
-  - choosing a different stable fixture in the adapter, or
-  - retiring or cleaning up the conflicting checkout before retrying `prepare`
+stable port 3000 for service "web" is unavailable: it is claimed by dev lane "feature-x" (app "myapp", service "web") at /home/auro/code/myapp-feature-x, which is not currently bound.
+Reassign that lane off the fixture, then re-run your original prepare (with the same --cwd/--config/--mode you ran it with):
+  devlane reassign --lane feature-x --force --cwd /home/auro/code/myapp-feature-x web    # adjust --cwd/--config if that lane's adapter is not at the checkout root
+  devlane prepare
+(If /home/auro/code/myapp-feature-x no longer exists, that worktree was removed — drop the stale row with `devlane host gc`, then re-run prepare.)
 ```
 
-### Scenario 3: Held by a dev lane, port currently bound (dev lane running)
+The dev lane only holds the fixture in the catalog, not on the host. `reassign --force` moves it to a fresh pool port; `prepare` then claims the fixture for stable. The recipe's `--cwd` is the offending lane's worktree root — the catalog does not store the adapter's config path, so for a monorepo subtree adapter that lives below the worktree root you point `--cwd`/`--config` at the adapter instead. If that worktree was deleted, the dev row is a stale `missing-repoPath` entry owned by `devlane host doctor`/`host gc`, not `reassign`.
+
+### Scenario 3: Held by a dev lane, port currently bound (a process is listening)
 
 ```
-ERROR: port 3000 is held by dev lane "feature-x" (service "web") and is currently bound by a running process.
-
-devlane does not stop other lanes' processes.
-
-Current recovery is manual:
-  - for compose-backed lanes, stop the conflicting lane in its checkout first
-  - for pure bare-metal lanes, stop the listening process outside devlane
-  - then retry `prepare`
+stable port 3000 for service "web" is unavailable: it is claimed by dev lane "feature-x" (app "myapp", service "web") at /home/auro/code/myapp-feature-x and the port is currently bound.
+Free the port, reassign that lane off the fixture, then re-run your original prepare (with the same --cwd/--config/--mode you ran it with):
+  # release port 3000: if dev lane "feature-x" is the listener, run `devlane down` in /home/auro/code/myapp-feature-x; otherwise stop whatever process holds the port
+  devlane reassign --lane feature-x --force --cwd /home/auro/code/myapp-feature-x web    # adjust --cwd/--config if that lane's adapter is not at the checkout root
+  devlane prepare
+(If /home/auro/code/myapp-feature-x no longer exists, that worktree was removed — drop the stale row with `devlane host gc`, then re-run prepare.)
 ```
+
+A probe can tell the fixture is bound but not by whom — usually the owning dev lane, but possibly an unrelated process — so the recipe covers both. devlane never stops another lane's processes: the listener must release the port before stable can bind it. `reassign --force` then moves the dev lane's catalog row off the fixture — without it, `reassign` would no-op once the port is free, and `prepare` would still see the fixture claimed.
+
+### Other holders: reserved ports and untracked processes
+
+Two non-lane cases produce a plain error rather than a recipe:
+
+- **On the reserved list** — the fixture is in the host or adapter `reserved` set. Reserved is checked before catalog ownership, so this dominates even when a catalog row also sits on the port; reassigning that row would not make the fixture usable. Remove the port from `reserved`, or choose a different stable fixture.
+- **Unbindable with no catalog row** — the fixture has no catalog owner and is not reserved, but the OS refuses the bind (a process started outside devlane already holds it, or it is a privileged port). `prepare` surfaces the concrete probe cause (`address already in use`, `permission denied`, …) rather than guessing; free the port or choose a different stable fixture.
 
 ## Stickiness guarantee
 

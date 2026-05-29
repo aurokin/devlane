@@ -101,15 +101,15 @@ When an agent encounters a port conflict, the order is:
 4. if the port is still blocked, stop and surface the conflict
 5. re-read `inspect --json` after the external conflict is resolved
 
-There is no shipped `devlane reassign` command yet. Do not hand-edit the catalog as part of normal agent behavior.
+Never hand-edit the catalog. To move a lane off a port, use `devlane reassign`.
 
 ### When `prepare` fails with a collision error
 
-If `prepare` fails with a stable-fixture collision:
+A stable-fixture collision error names the holder and, when the conflict is recoverable, includes the exact commands to run. Follow the recipe in the error rather than improvising:
 
-- **stable vs another app's stable**: report the error to the user; which adapter moves is a human decision
-- **stable vs offline dev lane**: surface the conflict and stop; the repair workflow is still manual today
-- **stable vs bound dev lane**: the conflicting process must be stopped first; do not attempt to kill foreign processes
+- **stable vs another stable lane**: no recipe — report the error to the user; which adapter moves is a human decision.
+- **stable vs offline dev lane**: run the printed `devlane reassign --lane <lane> --force --cwd <checkout> <service>` then `devlane prepare`. The recipe's `--cwd` already points at the offending checkout.
+- **stable vs bound dev lane**: stop the conflicting lane first (the error tells you where — `devlane down` in its checkout, or stop the bare-metal process), then run the printed `reassign` + `prepare`. Do not kill foreign processes the error does not attribute to a lane.
 
 ## Worktrees today
 
