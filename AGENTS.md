@@ -1,5 +1,8 @@
 # AGENTS.md
 
+> [!IMPORTANT]
+> devlane is superseded for the author's workflow — see [`docs/05-project-status.md`](docs/05-project-status.md). For a worktree-heavy, parallel-agent setup prefer [worktrunk](https://worktrunk.dev) + [portless](https://github.com/vercel-labs/portless). Continue here only for work on devlane itself or its narrow remaining niche (machine-wide port catalog + structured manifest).
+
 ## Mission
 
 Build **devlane**, a shared local-development control plane that lets humans and agents work on many repos with the same mental model:
