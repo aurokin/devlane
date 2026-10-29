@@ -2,9 +2,9 @@
 
 > **Status: shipped (Phase 2).** The operator command surface — `devlane port`, `host status`, `host doctor`, `host gc`, and `reassign` — plus the exported catalog API (`Allocation` + `List()`), the `Mutate(fn)` mutation primitive, the lane resolver, the drift-detection module, and the stable-port collision recipes are all in the codebase and tested. Current contract: `docs/40-cli-contract.md` (commands), `docs/65-host-catalog.md` (catalog + drift + collision recovery), `docs/80-agent-playbook.md` (agent conflict-handling).
 
-Execution history is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133); per-issue acceptance criteria live in Linear. The issue index below is kept as the historical record.
+Phase 2 was executed as former tracker issues AUR-126 through AUR-133. The issue index below is kept as the historical record; the shipped contract lives in the docs named above.
 
-## Linear issues
+## Issue index (historical)
 
 - **AUR-126** Catalog API: exported `Allocation` + `List()` (foundation; unblocks AUR-128 / 129 / 130 / 131)
 - **AUR-127** Windows catalog-lock error copy upgrade (independent)

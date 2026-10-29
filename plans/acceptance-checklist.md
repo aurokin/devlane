@@ -151,7 +151,7 @@ Phase 1 acceptance is intentionally limited to the contract/lifecycle subset. Ho
 
 ## Phase 2 acceptance
 
-Phase 2 acceptance is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Each issue carries its own acceptance criteria.
+Phase 2 shipped as the "Host Catalog Operator Commands" milestone (former tracker keys AUR-126 through AUR-133, indexed in `plans/05-host-catalog-commands.md`).
 
 Most originally-planned Phase 2 acceptance items shipped during Phase 1 stabilization (host config persistence, catalog lock-then-rename, IPv4/IPv6 probing with `V6ONLY=1`, sticky allocation, catalog identity model, deterministic multi-service allocation, catalog-coupled `prepare`, manifest `ports` and top-level `ready`, host-port `status` reporting). Those invariants are exercised by the current portalloc and CLI test suites and described in `docs/65-host-catalog.md`.
 
