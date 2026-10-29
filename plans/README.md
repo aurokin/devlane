@@ -1,6 +1,6 @@
 # Plans
 
-Planning and acceptance material that supports implementation work. **These are not the product contract** — read `docs/` first for current behavior, and treat Linear as the execution source of truth. Use the files here when you need durable in-repo planning detail or the original milestone reasoning.
+Planning and acceptance material that supports implementation work. **These are not the product contract** — read `docs/` first for current behavior, and track new work in GitHub issues and pull requests. Use the files here when you need durable in-repo planning detail or the original milestone reasoning.
 
 Phases 1–3 are shipped. Each milestone doc leads with a `> **Status**` banner; the body is kept as the historical plan.
 

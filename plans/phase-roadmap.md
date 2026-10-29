@@ -1,6 +1,6 @@
 # Implementation plan
 
-This file is planning context, not a current-state product contract. Read `docs/` first for shipped behavior, and use Linear for execution state.
+This file is planning context, not a current-state product contract. Read `docs/` first for shipped behavior, and use GitHub issues and pull requests for execution state.
 
 This scaffold is intentionally phased.
 
@@ -53,7 +53,7 @@ This phase is a prerequisite for worktree lifecycle automation because `worktree
 
 Phase 1 stabilization shipped most of the originally-planned Phase 2 plumbing. The host config parser, catalog persistence with lock-then-rename atomicity, sticky allocation engine, IPv4/IPv6 probing, catalog-coupled `prepare` orchestration with rollback, manifest `ports` and `ready`, `inspect --json` recompute from live catalog, `status` host-port reporting, the catalog identity model, and the catalog schema at `schemas/catalog.schema.json` were already in place. The operator surface and that targeted polish shipped in Phase 2.
 
-Execution history is tracked in the Linear milestone "Phase 2: Host Catalog Operator Commands" (AUR-126 through AUR-133). Per-issue acceptance bars live in Linear; the deliverables below describe the shape that shipped.
+Phase 2 shipped as the "Host Catalog Operator Commands" milestone (former tracker keys AUR-126 through AUR-133, indexed in `plans/05-host-catalog-commands.md`); the deliverables below describe the shape that shipped.
 
 Deliverables:
 
